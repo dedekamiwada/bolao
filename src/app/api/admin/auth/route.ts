@@ -13,17 +13,17 @@ export async function POST(req: NextRequest) {
   }
 
   const supabase = createAdminClient()
-  const { data } = await supabase
+  const { data, error: dbError } = await supabase
     .from("pool_config")
     .select("value")
     .eq("key", "admin_password_hash")
     .single()
 
-  if (!data) {
+  if (dbError || !data) {
     return NextResponse.json({ error: "Admin não configurado" }, { status: 500 })
   }
 
-  const hash = data.value as string
+  const hash = (data as { value: string }).value
   const valid = await bcrypt.compare(password, hash)
 
   if (!valid) {

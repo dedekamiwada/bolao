@@ -113,12 +113,19 @@ async function generateClassificationPredictions(
     ])
   )
 
-  const teamMap = new Map(allTeams.map((t: { id: number; fifa_code: string; name: string; flag_url: string; group_letter: string }) => [t.id, t]))
+  type TeamRow = { id: number; fifa_code: string; name: string; flag_url: string; group_letter: string }
+  const teamMap = new Map<number, TeamRow>(allTeams.map((t: TeamRow) => [t.id, t]))
 
   // Group matches by group letter
-  const groupLetters = [...new Set(allGroupMatches.map((m: { group_letter: string }) => m.group_letter).filter(Boolean))]
-  const allGroupStandings = []
-  const classificationUpserts = []
+  const groupLetters = [...new Set(allGroupMatches.map((m: { group_letter: string }) => m.group_letter).filter(Boolean))] as string[]
+  const allGroupStandings: ReturnType<typeof simulateGroupStandings>[] = []
+  const classificationUpserts: Array<{
+    participant_id: string
+    group_letter: string
+    position: number
+    team_id: number
+    is_locked: boolean
+  }> = []
 
   for (const letter of groupLetters) {
     const groupMatches = allGroupMatches.filter((m: { group_letter: string }) => m.group_letter === letter)

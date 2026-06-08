@@ -28,7 +28,8 @@ export async function PUT(req: NextRequest) {
   if (!id) return NextResponse.json({ error: "ID do jogo obrigatório" }, { status: 400 })
 
   const supabase = createAdminClient()
-  const update: Record<string, unknown> = {}
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const update: Record<string, any> = {}
 
   if (home_score !== undefined) update.home_score = home_score
   if (away_score !== undefined) update.away_score = away_score
@@ -41,6 +42,7 @@ export async function PUT(req: NextRequest) {
 
   const { data, error: dbError } = await supabase
     .from("matches")
+    // @ts-ignore – dynamic update object
     .update(update)
     .eq("id", id)
     .select()
