@@ -43,3 +43,22 @@ export async function POST(req: NextRequest) {
 
   return NextResponse.json({ participant: data, link, token: raw }, { status: 201 })
 }
+
+export async function DELETE(req: NextRequest) {
+  const { error } = await requireAdmin()
+  if (error) return error
+
+  const { id } = await req.json()
+  if (!id) return NextResponse.json({ error: "ID obrigatório" }, { status: 400 })
+
+  const supabase = createAdminClient()
+
+  // Soft delete — desativa o participante sem apagar dados
+  const { error: dbError } = await supabase
+    .from("participants")
+    .update({ is_active: false })
+    .eq("id", id)
+
+  if (dbError) return NextResponse.json({ error: dbError.message }, { status: 500 })
+  return NextResponse.json({ ok: true })
+}

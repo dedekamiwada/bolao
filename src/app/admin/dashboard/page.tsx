@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
-import { Users, RefreshCw, Copy, Check, LogOut, Loader2, Plus } from "lucide-react"
+import { Users, RefreshCw, Copy, Check, LogOut, Loader2, Plus, Trash2 } from "lucide-react"
 
 interface Participant {
   id: string
@@ -25,6 +25,7 @@ export default function AdminDashboard() {
   const [syncMsg, setSyncMsg] = useState("")
   const [copied, setCopied] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
 
   useEffect(() => {
     loadParticipants()
@@ -68,6 +69,18 @@ export default function AdminDashboard() {
     const data = await res.json()
     setSyncing(false)
     setSyncMsg(res.ok ? `✓ ${data.synced} jogos sincronizados` : "Erro ao sincronizar")
+  }
+
+  async function deleteParticipant(id: string, name: string) {
+    if (!confirm(`Desativar "${name}"? O participante perderá acesso mas os dados são mantidos.`)) return
+    setDeletingId(id)
+    await fetch("/api/admin/participants", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id }),
+    })
+    setDeletingId(null)
+    loadParticipants()
   }
 
   async function handleLogout() {
@@ -155,11 +168,26 @@ export default function AdminDashboard() {
             ) : (
               <div className="space-y-1">
                 {participants.map(p => (
-                  <div key={p.id} className="flex items-center justify-between py-2 border-b last:border-0">
-                    <span className="text-sm font-medium">{p.name}</span>
-                    <Badge variant={p.is_active ? "success" : "secondary"}>
-                      {p.is_active ? "Ativo" : "Inativo"}
-                    </Badge>
+                  <div key={p.id} className="flex items-center justify-between py-2 border-b last:border-0 gap-2">
+                    <span className="text-sm font-medium flex-1 truncate">{p.name}</span>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <Badge variant={p.is_active ? "success" : "secondary"}>
+                        {p.is_active ? "Ativo" : "Inativo"}
+                      </Badge>
+                      {p.is_active && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                          onClick={() => deleteParticipant(p.id, p.name)}
+                          disabled={deletingId === p.id}
+                        >
+                          {deletingId === p.id
+                            ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            : <Trash2 className="w-3.5 h-3.5" />}
+                        </Button>
+                      )}
+                    </div>
                   </div>
                 ))}
               </div>
