@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
-import { Users, RefreshCw, Copy, Check, LogOut, Loader2, Plus, Trash2, Calculator } from "lucide-react"
+import { Users, RefreshCw, Copy, Check, LogOut, Loader2, Plus, Trash2, Calculator, Link2, RotateCcw } from "lucide-react"
 
 interface Participant {
   id: string
@@ -21,17 +21,16 @@ export default function AdminDashboard() {
   const [newName, setNewName] = useState("")
   const [creating, setCreating] = useState(false)
   const [generatedLink, setGeneratedLink] = useState("")
+  const [generatedFor, setGeneratedFor] = useState("")
   const [syncing, setSyncing] = useState(false)
   const [syncMsg, setSyncMsg] = useState("")
   const [scoring, setScoring] = useState(false)
   const [scoreMsg, setScoreMsg] = useState("")
-  const [copied, setCopied] = useState(false)
+  const [copiedLink, setCopiedLink] = useState("")
   const [loading, setLoading] = useState(true)
-  const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [actionId, setActionId] = useState<string | null>(null)
 
-  useEffect(() => {
-    loadParticipants()
-  }, [])
+  useEffect(() => { loadParticipants() }, [])
 
   async function loadParticipants() {
     const res = await fetch("/api/admin/participants")
@@ -52,16 +51,46 @@ export default function AdminDashboard() {
     const data = await res.json()
     if (res.ok) {
       setGeneratedLink(data.link)
+      setGeneratedFor(newName.trim())
       setNewName("")
       loadParticipants()
     }
     setCreating(false)
   }
 
-  async function copyLink() {
-    await navigator.clipboard.writeText(generatedLink)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
+  async function regenerateToken(id: string, name: string) {
+    if (!confirm(`Gerar novo link para "${name}"? O link anterior não funcionará mais.`)) return
+    setActionId(id)
+    const res = await fetch("/api/admin/participants", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ regenerate: true, id }),
+    })
+    const data = await res.json()
+    if (res.ok) {
+      setGeneratedLink(data.link)
+      setGeneratedFor(name)
+    }
+    setActionId(null)
+  }
+
+  async function copyLink(link?: string) {
+    const url = link ?? generatedLink
+    await navigator.clipboard.writeText(url)
+    setCopiedLink(url)
+    setTimeout(() => setCopiedLink(""), 2000)
+  }
+
+  async function hardDeleteParticipant(id: string, name: string) {
+    if (!confirm(`⚠️ EXCLUIR DEFINITIVAMENTE "${name}"?\n\nTodos os palpites e pontuações serão apagados permanentemente. Esta ação não pode ser desfeita.`)) return
+    setActionId(id)
+    await fetch("/api/admin/participants", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id, hard: true }),
+    })
+    setActionId(null)
+    loadParticipants()
   }
 
   async function handleSync() {
@@ -71,18 +100,6 @@ export default function AdminDashboard() {
     const data = await res.json()
     setSyncing(false)
     setSyncMsg(res.ok ? `✓ ${data.synced} jogos sincronizados` : "Erro ao sincronizar")
-  }
-
-  async function deleteParticipant(id: string, name: string) {
-    if (!confirm(`Desativar "${name}"? O participante perderá acesso mas os dados são mantidos.`)) return
-    setDeletingId(id)
-    await fetch("/api/admin/participants", {
-      method: "DELETE",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id }),
-    })
-    setDeletingId(null)
-    loadParticipants()
   }
 
   async function handleRecalculate() {
@@ -112,26 +129,45 @@ export default function AdminDashboard() {
       </div>
 
       <div className="max-w-2xl mx-auto px-4 py-6 space-y-6">
-        {/* Sincronização */}
+
+        {/* Sincronização e Pontuação */}
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-sm flex items-center gap-2">
-              <RefreshCw className="w-4 h-4" /> Sincronizar Resultados
+              <RefreshCw className="w-4 h-4" /> Resultados &amp; Pontuação
             </CardTitle>
           </CardHeader>
-          <CardContent className="pt-0 flex items-center gap-3">
-            <Button onClick={handleSync} disabled={syncing} variant="outline" size="sm">
-              {syncing ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <RefreshCw className="w-4 h-4 mr-2" />}
-              Sincronizar Agora
-            </Button>
-            {syncMsg && <span className="text-sm text-muted-foreground">{syncMsg}</span>}
-            <Button onClick={handleRecalculate} disabled={scoring} variant="outline" size="sm">
-              {scoring ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Calculator className="w-4 h-4 mr-2" />}
-              Recalcular Pontos
-            </Button>
-            {scoreMsg && <span className="text-sm text-muted-foreground">{scoreMsg}</span>}
+          <CardContent className="pt-0 space-y-3">
+            <div className="flex flex-wrap gap-2">
+              <Button onClick={handleSync} disabled={syncing} variant="outline" size="sm">
+                {syncing ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <RefreshCw className="w-4 h-4 mr-2" />}
+                Sincronizar
+              </Button>
+              <Button onClick={handleRecalculate} disabled={scoring} variant="outline" size="sm">
+                {scoring ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Calculator className="w-4 h-4 mr-2" />}
+                Recalcular Pontos
+              </Button>
+            </div>
+            {syncMsg && <p className="text-xs text-muted-foreground">{syncMsg}</p>}
+            {scoreMsg && <p className="text-xs text-muted-foreground">{scoreMsg}</p>}
           </CardContent>
         </Card>
+
+        {/* Link gerado (aparece após criar ou regenerar) */}
+        {generatedLink && (
+          <div className="bg-green-50 dark:bg-green-950/30 border border-green-200 rounded-lg p-3 space-y-2">
+            <p className="text-xs text-green-700 dark:text-green-400 font-medium">
+              ✓ Link de <strong>{generatedFor}</strong> — envie agora:
+            </p>
+            <div className="flex items-center gap-2">
+              <code className="text-xs bg-background border rounded px-2 py-1 flex-1 truncate">{generatedLink}</code>
+              <Button size="sm" variant="outline" onClick={() => copyLink()}>
+                {copiedLink === generatedLink ? <Check className="w-4 h-4 text-green-600" /> : <Copy className="w-4 h-4" />}
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground">⚠️ Guarde agora — o token não é armazenado.</p>
+          </div>
+        )}
 
         {/* Criar participante */}
         <Card>
@@ -140,7 +176,7 @@ export default function AdminDashboard() {
               <Plus className="w-4 h-4" /> Adicionar Participante
             </CardTitle>
           </CardHeader>
-          <CardContent className="pt-0 space-y-3">
+          <CardContent className="pt-0">
             <div className="flex gap-2">
               <Input
                 placeholder="Nome do participante"
@@ -152,18 +188,6 @@ export default function AdminDashboard() {
                 {creating ? <Loader2 className="w-4 h-4 animate-spin" /> : "Criar"}
               </Button>
             </div>
-            {generatedLink && (
-              <div className="bg-green-50 dark:bg-green-950/30 border border-green-200 rounded-lg p-3 space-y-2">
-                <p className="text-xs text-green-700 dark:text-green-400 font-medium">✓ Link gerado — envie para o participante:</p>
-                <div className="flex items-center gap-2">
-                  <code className="text-xs bg-background border rounded px-2 py-1 flex-1 truncate">{generatedLink}</code>
-                  <Button size="sm" variant="outline" onClick={copyLink}>
-                    {copied ? <Check className="w-4 h-4 text-green-600" /> : <Copy className="w-4 h-4" />}
-                  </Button>
-                </div>
-                <p className="text-xs text-muted-foreground">⚠️ Este link aparece apenas uma vez.</p>
-              </div>
-            )}
           </CardContent>
         </Card>
 
@@ -182,27 +206,38 @@ export default function AdminDashboard() {
             ) : participants.length === 0 ? (
               <p className="text-sm text-muted-foreground text-center py-4">Nenhum participante ainda.</p>
             ) : (
-              <div className="space-y-1">
+              <div className="divide-y">
                 {participants.map(p => (
-                  <div key={p.id} className="flex items-center justify-between py-2 border-b last:border-0 gap-2">
-                    <span className="text-sm font-medium flex-1 truncate">{p.name}</span>
-                    <div className="flex items-center gap-2 shrink-0">
-                      <Badge variant={p.is_active ? "success" : "secondary"}>
+                  <div key={p.id} className="flex items-center justify-between py-2.5 gap-2">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium truncate">{p.name}</p>
+                      <Badge variant={p.is_active ? "success" : "secondary"} className="text-[10px] mt-0.5">
                         {p.is_active ? "Ativo" : "Inativo"}
                       </Badge>
-                      {p.is_active && (
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                          onClick={() => deleteParticipant(p.id, p.name)}
-                          disabled={deletingId === p.id}
-                        >
-                          {deletingId === p.id
-                            ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                            : <Trash2 className="w-3.5 h-3.5" />}
-                        </Button>
-                      )}
+                    </div>
+                    <div className="flex items-center gap-1 shrink-0">
+                      {/* Novo link (regenerar token) */}
+                      <Button
+                        variant="ghost" size="icon"
+                        className="h-7 w-7 text-muted-foreground hover:text-blue-600"
+                        title="Gerar novo link"
+                        onClick={() => regenerateToken(p.id, p.name)}
+                        disabled={actionId === p.id}
+                      >
+                        {actionId === p.id
+                          ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          : <RotateCcw className="w-3.5 h-3.5" />}
+                      </Button>
+                      {/* Excluir definitivamente */}
+                      <Button
+                        variant="ghost" size="icon"
+                        className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                        title="Excluir definitivamente"
+                        onClick={() => hardDeleteParticipant(p.id, p.name)}
+                        disabled={actionId === p.id}
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </Button>
                     </div>
                   </div>
                 ))}

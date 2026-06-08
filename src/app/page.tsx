@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Trophy, Target, Zap } from "lucide-react"
 import { formatDate } from "@/lib/utils"
+import { TokenAccess } from "@/components/shared/TokenAccess"
 
 export const revalidate = 30
 
@@ -123,9 +124,12 @@ export default async function HomePage() {
           </CardContent>
         </Card>
 
-        <p className="text-center text-xs text-muted-foreground pb-4">
-          Acesse seu link individual para registrar palpites
-        </p>
+        {/* Acesso por token */}
+        <Card>
+          <CardContent className="pt-4 pb-4">
+            <TokenAccess />
+          </CardContent>
+        </Card>
       </div>
     </main>
   )
