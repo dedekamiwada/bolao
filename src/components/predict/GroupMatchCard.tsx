@@ -5,12 +5,13 @@ import { TeamFlag } from "@/components/shared/TeamFlag"
 import { MatchStatusBadge } from "@/components/shared/MatchStatusBadge"
 import { cn } from "@/lib/utils"
 import { formatDate } from "@/lib/utils"
-import { Lock } from "lucide-react"
+import { Clock, Lock } from "lucide-react"
 
 const CUTOFF_MINUTES = 15
 
-function useTimeLock(scheduledAt: string) {
-  const cutoff = new Date(scheduledAt).getTime() - CUTOFF_MINUTES * 60 * 1000
+// Locks 15 min before the first match of the round (not this specific match)
+function useTimeLock(roundFirstMatchAt: string) {
+  const cutoff = new Date(roundFirstMatchAt).getTime() - CUTOFF_MINUTES * 60 * 1000
   const [locked, setLocked] = useState(Date.now() >= cutoff)
 
   useEffect(() => {
@@ -18,7 +19,6 @@ function useTimeLock(scheduledAt: string) {
     const remaining = cutoff - Date.now()
     if (remaining <= 0) { setLocked(true); return }
 
-    // Tick every second when close (< 5 min), otherwise just set a timeout
     if (remaining < 5 * 60 * 1000) {
       const interval = setInterval(() => {
         if (Date.now() >= cutoff) { setLocked(true); clearInterval(interval) }
@@ -33,8 +33,25 @@ function useTimeLock(scheduledAt: string) {
   return locked
 }
 
-function Countdown({ scheduledAt }: { scheduledAt: string }) {
-  const cutoff = new Date(scheduledAt).getTime() - CUTOFF_MINUTES * 60 * 1000
+// Becomes false (open) once the previous round's last match has kicked off
+function useNotYetOpen(prevRoundLastMatchAt: string | null): boolean {
+  const openTime = prevRoundLastMatchAt ? new Date(prevRoundLastMatchAt).getTime() : 0
+  const alreadyOpen = !prevRoundLastMatchAt || Date.now() >= openTime
+  const [open, setOpen] = useState(alreadyOpen)
+
+  useEffect(() => {
+    if (!prevRoundLastMatchAt || open) return
+    const remaining = openTime - Date.now()
+    if (remaining <= 0) { setOpen(true); return }
+    const timeout = setTimeout(() => setOpen(true), remaining)
+    return () => clearTimeout(timeout)
+  }, [openTime, open, prevRoundLastMatchAt])
+
+  return !open
+}
+
+function Countdown({ roundFirstMatchAt }: { roundFirstMatchAt: string }) {
+  const cutoff = new Date(roundFirstMatchAt).getTime() - CUTOFF_MINUTES * 60 * 1000
   const [remaining, setRemaining] = useState(cutoff - Date.now())
 
   useEffect(() => {
@@ -50,16 +67,19 @@ function Countdown({ scheduledAt }: { scheduledAt: string }) {
   if (remaining <= 0) return null
 
   const totalSeconds = Math.floor(remaining / 1000)
-  const h = Math.floor(totalSeconds / 3600)
+  const d = Math.floor(totalSeconds / 86400)
+  const h = Math.floor((totalSeconds % 86400) / 3600)
   const m = Math.floor((totalSeconds % 3600) / 60)
   const s = totalSeconds % 60
   const isUrgent = remaining < 30 * 60 * 1000
 
-  const label = h > 0
-    ? `Fecha em ${h}h ${m.toString().padStart(2, "0")}m`
+  const label = d > 0
+    ? `Rodada fecha em ${d}d ${h}h`
+    : h > 0
+    ? `Rodada fecha em ${h}h ${m.toString().padStart(2, "0")}m`
     : m > 0
-    ? `Fecha em ${m}m ${s.toString().padStart(2, "0")}s`
-    : `Fecha em ${s}s`
+    ? `Rodada fecha em ${m}m ${s.toString().padStart(2, "0")}s`
+    : `Rodada fecha em ${s}s`
 
   return (
     <span className={cn(
@@ -83,6 +103,9 @@ interface GroupMatchCardProps {
   homeTeam: Team | null
   awayTeam: Team | null
   scheduledAt: string
+  roundFirstMatchAt: string
+  prevRoundLastMatchAt: string | null
+  roundNumber: 1 | 2 | 3
   status: string
   officialHomeScore: number | null
   officialAwayScore: number | null
@@ -97,6 +120,9 @@ export function GroupMatchCard({
   homeTeam,
   awayTeam,
   scheduledAt,
+  roundFirstMatchAt,
+  prevRoundLastMatchAt,
+  roundNumber,
   status,
   officialHomeScore,
   officialAwayScore,
@@ -108,7 +134,8 @@ export function GroupMatchCard({
   const [home, setHome] = useState(predictedHomeScore?.toString() ?? "")
   const [away, setAway] = useState(predictedAwayScore?.toString() ?? "")
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const isTimeLocked = useTimeLock(scheduledAt)
+  const isTimeLocked = useTimeLock(roundFirstMatchAt)
+  const isNotYetOpen = useNotYetOpen(prevRoundLastMatchAt)
 
   useEffect(() => {
     setHome(predictedHomeScore?.toString() ?? "")
@@ -128,26 +155,31 @@ export function GroupMatchCard({
     }, 500)
   }
 
-  const locked = isLockedByDb || isTimeLocked || status === "LIVE" || status === "FINISHED"
   const isFinished = status === "FINISHED"
   const isLive = status === "LIVE"
+  const locked = isLockedByDb || isTimeLocked || isLive || isFinished
 
   return (
     <div className={cn(
       "rounded-lg border bg-card p-3 transition-all",
-      locked && "opacity-80",
+      (locked || isNotYetOpen) && "opacity-70",
       isLive && "border-red-300 bg-red-50/50 dark:bg-red-950/10"
     )}>
       {/* Header: data + countdown/status */}
       <div className="flex items-center justify-between mb-2">
         <span className="text-xs text-muted-foreground">{formatDate(scheduledAt)}</span>
         <div className="flex items-center gap-2">
-          {locked && !isFinished && !isLive && (
+          {isNotYetOpen && (
+            <span className="flex items-center gap-1 text-xs text-muted-foreground">
+              <Clock className="w-3 h-3" /> Aguarda Rodada {roundNumber - 1}
+            </span>
+          )}
+          {!isNotYetOpen && locked && !isFinished && !isLive && (
             <span className="flex items-center gap-1 text-xs text-orange-500 font-medium">
               <Lock className="w-3 h-3" /> Encerrado
             </span>
           )}
-          {!locked && <Countdown scheduledAt={scheduledAt} />}
+          {!isNotYetOpen && !locked && <Countdown roundFirstMatchAt={roundFirstMatchAt} />}
           <MatchStatusBadge status={status} />
         </div>
       </div>
@@ -168,10 +200,10 @@ export function GroupMatchCard({
             pattern="[0-9]*"
             value={home}
             onChange={(e) => handleChange("home", e.target.value)}
-            disabled={locked}
+            disabled={locked || isNotYetOpen}
             className={cn(
               "w-10 h-10 text-center text-lg font-bold rounded-md border focus:outline-none focus:ring-2 focus:ring-primary bg-background",
-              locked && "cursor-not-allowed bg-muted text-muted-foreground"
+              (locked || isNotYetOpen) && "cursor-not-allowed bg-muted text-muted-foreground"
             )}
             placeholder="–"
           />
@@ -184,10 +216,10 @@ export function GroupMatchCard({
             pattern="[0-9]*"
             value={away}
             onChange={(e) => handleChange("away", e.target.value)}
-            disabled={locked}
+            disabled={locked || isNotYetOpen}
             className={cn(
               "w-10 h-10 text-center text-lg font-bold rounded-md border focus:outline-none focus:ring-2 focus:ring-primary bg-background",
-              locked && "cursor-not-allowed bg-muted text-muted-foreground"
+              (locked || isNotYetOpen) && "cursor-not-allowed bg-muted text-muted-foreground"
             )}
             placeholder="–"
           />

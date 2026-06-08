@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
-import { validateParticipant, isPredictionLocked } from "@/lib/participant-auth"
+import { validateParticipant } from "@/lib/participant-auth"
+import { isGroupMatchBettable } from "@/lib/group-rounds"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { simulateGroupStandings, selectBest3rdPlaceTeams } from "@/lib/scoring/groupSimulation"
 
@@ -20,7 +21,7 @@ export async function GET(
       .eq("participant_id", participant!.id),
     supabase
       .from("matches")
-      .select("id, group_letter, home_team_id, away_team_id, scheduled_at, status, home_score, away_score, home_team:teams!matches_home_team_id_fkey(id, fifa_code, name, flag_url), away_team:teams!matches_away_team_id_fkey(id, fifa_code, name, flag_url)")
+      .select("id, match_number, group_letter, home_team_id, away_team_id, scheduled_at, status, home_score, away_score, home_team:teams!matches_home_team_id_fkey(id, fifa_code, name, flag_url), away_team:teams!matches_away_team_id_fkey(id, fifa_code, name, flag_url)")
       .eq("stage", "GROUP")
       .order("scheduled_at", { ascending: true }),
   ])
@@ -45,22 +46,36 @@ export async function POST(
 
   const supabase = createAdminClient()
 
-  // Fetch group matches to validate locks
+  // Fetch submitted matches with match_number and group_letter for round validation
   const matchIds = predictions.map((p: { matchId: number }) => p.matchId)
-  const { data: matches } = await supabase
+  const { data: predMatches } = await supabase
     .from("matches")
-    .select("id, scheduled_at, status")
+    .select("id, match_number, group_letter, scheduled_at, status")
     .in("id", matchIds)
     .eq("stage", "GROUP")
 
-  if (!matches) return NextResponse.json({ error: "Jogos não encontrados" }, { status: 400 })
+  if (!predMatches) return NextResponse.json({ error: "Jogos não encontrados" }, { status: 400 })
 
-  // Validate prediction scores and check locks
+  // Fetch all group matches for the involved groups to compute round boundaries
+  const groupLetters = [...new Set(predMatches.map((m: { group_letter: string }) => m.group_letter))]
+  const { data: allGroupMatches } = await supabase
+    .from("matches")
+    .select("id, match_number, group_letter, scheduled_at")
+    .eq("stage", "GROUP")
+    .in("group_letter", groupLetters)
+
+  if (!allGroupMatches) return NextResponse.json({ error: "Erro ao buscar rodadas" }, { status: 500 })
+
+  // Validate each prediction using round-based lock logic
   const validPredictions = []
   for (const pred of predictions) {
-    const match = matches.find((m) => m.id === pred.matchId)
+    const match = predMatches.find((m: { id: number }) => m.id === pred.matchId)
     if (!match) continue
-    if (isPredictionLocked(match.scheduled_at)) continue // silently skip locked
+
+    const groupMatches = allGroupMatches.filter(
+      (m: { group_letter: string }) => m.group_letter === match.group_letter
+    )
+    if (!isGroupMatchBettable(match, groupMatches)) continue // silently skip locked/not-open
 
     if (pred.homeScore < 0 || pred.awayScore < 0) continue
 
