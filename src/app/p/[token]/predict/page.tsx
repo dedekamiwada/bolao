@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback, useMemo } from "react"
+import { useState, useEffect, useCallback, useMemo, useRef } from "react"
 import { useParams, useRouter } from "next/navigation"
 import { GroupMatchCard } from "@/components/predict/GroupMatchCard"
 import { SimulatedStandings } from "@/components/predict/SimulatedStandings"
@@ -101,6 +101,27 @@ export default function PredictPage() {
     matches.some(m => m.group_letter === g)
   )
 
+  // Swipe to navigate between groups
+  const touchStartX = useRef<number | null>(null)
+  function handleTouchStart(e: React.TouchEvent) {
+    touchStartX.current = e.touches[0].clientX
+  }
+  function handleTouchEnd(e: React.TouchEvent) {
+    if (touchStartX.current === null) return
+    const deltaX = e.changedTouches[0].clientX - touchStartX.current
+    touchStartX.current = null
+    if (Math.abs(deltaX) < 50) return // ignore small movements
+
+    const currentIdx = groupsWithMatches.indexOf(activeGroup as typeof GROUP_LETTERS[number])
+    if (deltaX < 0 && currentIdx < groupsWithMatches.length - 1) {
+      // swipe left → next group
+      setActiveGroup(groupsWithMatches[currentIdx + 1])
+    } else if (deltaX > 0 && currentIdx > 0) {
+      // swipe right → previous group
+      setActiveGroup(groupsWithMatches[currentIdx - 1])
+    }
+  }
+
   // Group matches by date (DD/MM)
   const matchesByDate = useMemo(() => {
     const sorted = [...matches].sort(
@@ -164,7 +185,12 @@ export default function PredictPage() {
 
         {/* ── VISÃO POR GRUPO ── */}
         {viewMode === "group" && (
-          <Tabs value={activeGroup} onValueChange={setActiveGroup}>
+          <Tabs value={activeGroup} onValueChange={setActiveGroup}
+            onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
+            {/* Hint de swipe — só aparece na primeira vez */}
+            <p className="text-[11px] text-muted-foreground text-center mb-2 select-none">
+              ← deslize para mudar de grupo →
+            </p>
             <TabsList className="flex flex-wrap h-auto gap-1 mb-4 bg-muted p-1">
               {groupsWithMatches.map(g => {
                 const groupPreds = matches
