@@ -219,6 +219,13 @@ export default function PredictPage() {
       })
       .map(([matchId, { home, away }]) => ({ matchId, homeScore: home, awayScore: away }))
 
+    // Nada para salvar (rodada encerrada ou sem palpites preenchidos)
+    if (body.length === 0) {
+      setSaving(false)
+      setSaveMsg("Nenhum palpite disponível para salvar agora.")
+      return
+    }
+
     const res = await fetch(`/api/p/${token}/predictions`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },

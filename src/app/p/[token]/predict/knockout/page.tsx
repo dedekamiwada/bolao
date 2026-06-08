@@ -188,7 +188,10 @@ export default function KnockoutPredictPage() {
                         <div className="flex items-center gap-2 mb-2">
                           {/* Home team */}
                           <div className="flex-1 flex items-center gap-2 min-w-0">
-                            <span className="text-sm font-semibold truncate">{homeTeam?.fifa_code ?? "?"}</span>
+                            <div className="min-w-0">
+                              <div className="text-sm font-bold truncate leading-tight">{homeTeam?.fifa_code ?? "?"}</div>
+                              {homeTeam?.name && <div className="text-[10px] text-muted-foreground truncate leading-tight">{homeTeam.name}</div>}
+                            </div>
                           </div>
                           {/* Scores */}
                           <div className="flex items-center gap-1 shrink-0">
@@ -212,7 +215,10 @@ export default function KnockoutPredictPage() {
                           </div>
                           {/* Away team */}
                           <div className="flex-1 flex items-center justify-end gap-2 min-w-0">
-                            <span className="text-sm font-semibold truncate text-right">{awayTeam?.fifa_code ?? "?"}</span>
+                            <div className="min-w-0 text-right">
+                              <div className="text-sm font-bold truncate leading-tight">{awayTeam?.fifa_code ?? "?"}</div>
+                              {awayTeam?.name && <div className="text-[10px] text-muted-foreground truncate leading-tight">{awayTeam.name}</div>}
+                            </div>
                           </div>
                         </div>
 

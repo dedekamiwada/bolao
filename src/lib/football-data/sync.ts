@@ -98,6 +98,9 @@ export async function syncMatches(fullSync = false) {
         update.winner_team_id = existing.home_team_id
       } else if (fdMatch.score.winner === "AWAY_TEAM") {
         update.winner_team_id = existing.away_team_id
+      } else {
+        // DRAW ou null — garante que não persiste um winner_team_id incorreto de sync anterior
+        update.winner_team_id = null
       }
 
       if (wasNotFinished && !existing.result_confirmed_at) {
