@@ -53,6 +53,8 @@ export default function PredictPage() {
   const [saveMsg, setSaveMsg] = useState("")
   const [activeGroup, setActiveGroup] = useState("A")
   const [viewMode, setViewMode] = useState<ViewMode>("group")
+  const [selectedDate, setSelectedDate] = useState<string | null>(null)
+  const [statusFilter, setStatusFilter] = useState<"all" | "upcoming" | "done">("upcoming")
 
   useEffect(() => {
     fetch(`/api/p/${token}/predictions`)
@@ -253,52 +255,158 @@ export default function PredictPage() {
 
         {/* ── VISÃO POR DATA ── */}
         {viewMode === "date" && (
-          <div className="space-y-6">
-            {[...matchesByDate.entries()].map(([dateKey, dayMatches]) => {
-              const hasPending = dayMatches.some(m =>
-                !lockedMatches.has(m.id) && m.status === "SCHEDULED" && !predictions.has(m.id)
-              )
-              return (
-                <div key={dateKey}>
-                  <div className="flex items-center gap-2 mb-2 px-1">
-                    <h3 className="text-sm font-semibold capitalize">{dateKey}</h3>
-                    {hasPending && (
-                      <span className="text-xs bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full">
-                        palpites pendentes
-                      </span>
+          <div className="space-y-4">
+
+            {/* Filtro de status */}
+            <div className="flex gap-2">
+              {(["upcoming", "done", "all"] as const).map(f => {
+                const label = f === "upcoming" ? "⏳ Próximos" : f === "done" ? "✅ Encerrados" : "📋 Todos"
+                return (
+                  <button
+                    key={f}
+                    onClick={() => setStatusFilter(f)}
+                    className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-medium border transition-colors ${
+                      statusFilter === f
+                        ? "bg-green-700 text-white border-green-700"
+                        : "bg-background text-muted-foreground border-border hover:bg-muted"
+                    }`}
+                  >
+                    {label}
+                  </button>
+                )
+              })}
+            </div>
+
+            {/* Seletor de datas (scroll horizontal) */}
+            <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide -mx-3 px-3">
+              <button
+                onClick={() => setSelectedDate(null)}
+                className={`shrink-0 px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
+                  selectedDate === null
+                    ? "bg-green-700 text-white border-green-700"
+                    : "bg-background border-border text-muted-foreground hover:bg-muted"
+                }`}
+              >
+                Todas
+              </button>
+              {[...matchesByDate.keys()].map(dateKey => {
+                const dayMatches = matchesByDate.get(dateKey)!
+                const hasPending = dayMatches.some(m =>
+                  !lockedMatches.has(m.id) && m.status === "SCHEDULED" && !predictions.has(m.id)
+                )
+                return (
+                  <button
+                    key={dateKey}
+                    onClick={() => setSelectedDate(selectedDate === dateKey ? null : dateKey)}
+                    className={`shrink-0 px-3 py-1.5 rounded-full text-xs font-medium border transition-colors relative ${
+                      selectedDate === dateKey
+                        ? "bg-green-700 text-white border-green-700"
+                        : "bg-background border-border text-muted-foreground hover:bg-muted"
+                    }`}
+                  >
+                    {dateKey}
+                    {hasPending && statusFilter !== "done" && (
+                      <span className="absolute -top-1 -right-1 w-2 h-2 bg-orange-400 rounded-full" />
                     )}
-                  </div>
-                  <div className="space-y-2">
-                    {dayMatches.map(m => (
-                      <div key={m.id}>
-                        <div className="flex items-center gap-2 mb-1 px-1">
-                          <span className="text-xs text-muted-foreground">
-                            {new Date(m.scheduled_at).toLocaleTimeString("pt-BR", {
-                              hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo"
-                            })}
+                  </button>
+                )
+              })}
+            </div>
+
+            {/* Lista de jogos filtrada */}
+            <div className="space-y-6">
+              {[...matchesByDate.entries()]
+                .filter(([dateKey]) => selectedDate === null || dateKey === selectedDate)
+                .map(([dateKey, dayMatches]) => {
+                  // Aplicar filtro de status
+                  const filtered = dayMatches.filter(m => {
+                    const isFinished = m.status === "FINISHED" || m.status === "LIVE"
+                    const cutoff = new Date(m.scheduled_at).getTime() - 15 * 60 * 1000
+                    const isLocked = lockedMatches.has(m.id) || Date.now() >= cutoff
+                    if (statusFilter === "upcoming") return !isLocked && !isFinished
+                    if (statusFilter === "done") return isFinished || isLocked
+                    return true
+                  })
+                  if (filtered.length === 0) return null
+
+                  const hasPending = filtered.some(m =>
+                    !lockedMatches.has(m.id) && m.status === "SCHEDULED" && !predictions.has(m.id)
+                  )
+
+                  return (
+                    <div key={dateKey}>
+                      <div className="flex items-center gap-2 mb-2 px-1">
+                        <h3 className="text-sm font-semibold capitalize">{dateKey}</h3>
+                        {hasPending && (
+                          <span className="text-xs bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full">
+                            {filtered.filter(m => !predictions.has(m.id) && m.status === "SCHEDULED").length} sem palpite
                           </span>
-                          <span className="text-xs text-muted-foreground">·</span>
-                          <span className="text-xs font-medium text-green-700">Grupo {m.group_letter}</span>
-                        </div>
-                        <GroupMatchCard
-                          matchId={m.id}
-                          homeTeam={m.home_team}
-                          awayTeam={m.away_team}
-                          scheduledAt={m.scheduled_at}
-                          status={m.status}
-                          officialHomeScore={m.home_score}
-                          officialAwayScore={m.away_score}
-                          predictedHomeScore={predictions.get(m.id)?.home}
-                          predictedAwayScore={predictions.get(m.id)?.away}
-                          isLocked={lockedMatches.has(m.id)}
-                          onChange={handleChange}
-                        />
+                        )}
+                        <span className="text-xs text-muted-foreground ml-auto">
+                          {filtered.filter(m => predictions.has(m.id)).length}/{filtered.length} ✓
+                        </span>
                       </div>
-                    ))}
-                  </div>
+                      <div className="space-y-2">
+                        {filtered.map(m => (
+                          <div key={m.id}>
+                            <div className="flex items-center gap-2 mb-1 px-1">
+                              <span className="text-xs text-muted-foreground">
+                                {new Date(m.scheduled_at).toLocaleTimeString("pt-BR", {
+                                  hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo"
+                                })}
+                              </span>
+                              <span className="text-xs text-muted-foreground">·</span>
+                              <span className="text-xs font-medium text-green-700">Grupo {m.group_letter}</span>
+                              {predictions.has(m.id) && (
+                                <span className="text-xs text-green-600 ml-auto">✓ palpitado</span>
+                              )}
+                            </div>
+                            <GroupMatchCard
+                              matchId={m.id}
+                              homeTeam={m.home_team}
+                              awayTeam={m.away_team}
+                              scheduledAt={m.scheduled_at}
+                              status={m.status}
+                              officialHomeScore={m.home_score}
+                              officialAwayScore={m.away_score}
+                              predictedHomeScore={predictions.get(m.id)?.home}
+                              predictedAwayScore={predictions.get(m.id)?.away}
+                              isLocked={lockedMatches.has(m.id)}
+                              onChange={handleChange}
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )
+                })}
+
+              {/* Mensagem quando filtro não retorna nada */}
+              {[...matchesByDate.entries()]
+                .filter(([dateKey]) => selectedDate === null || dateKey === selectedDate)
+                .every(([, dayMatches]) => {
+                  const filtered = dayMatches.filter(m => {
+                    const isFinished = m.status === "FINISHED" || m.status === "LIVE"
+                    const cutoff = new Date(m.scheduled_at).getTime() - 15 * 60 * 1000
+                    const isLocked = lockedMatches.has(m.id) || Date.now() >= cutoff
+                    if (statusFilter === "upcoming") return !isLocked && !isFinished
+                    if (statusFilter === "done") return isFinished || isLocked
+                    return true
+                  })
+                  return filtered.length === 0
+                }) && (
+                <div className="text-center py-12 text-muted-foreground">
+                  <p className="text-3xl mb-2">
+                    {statusFilter === "upcoming" ? "🎉" : "📭"}
+                  </p>
+                  <p className="text-sm">
+                    {statusFilter === "upcoming"
+                      ? "Todos os palpites desta data já estão encerrados!"
+                      : "Nenhum jogo encerrado ainda nesta data."}
+                  </p>
                 </div>
-              )
-            })}
+              )}
+            </div>
           </div>
         )}
       </div>
