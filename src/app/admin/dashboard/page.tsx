@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
-import { Users, RefreshCw, Copy, Check, LogOut, Loader2, Plus, Trash2 } from "lucide-react"
+import { Users, RefreshCw, Copy, Check, LogOut, Loader2, Plus, Trash2, Calculator } from "lucide-react"
 
 interface Participant {
   id: string
@@ -23,6 +23,8 @@ export default function AdminDashboard() {
   const [generatedLink, setGeneratedLink] = useState("")
   const [syncing, setSyncing] = useState(false)
   const [syncMsg, setSyncMsg] = useState("")
+  const [scoring, setScoring] = useState(false)
+  const [scoreMsg, setScoreMsg] = useState("")
   const [copied, setCopied] = useState(false)
   const [loading, setLoading] = useState(true)
   const [deletingId, setDeletingId] = useState<string | null>(null)
@@ -83,6 +85,15 @@ export default function AdminDashboard() {
     loadParticipants()
   }
 
+  async function handleRecalculate() {
+    setScoring(true)
+    setScoreMsg("")
+    const res = await fetch("/api/admin/score", { method: "POST" })
+    const data = await res.json()
+    setScoring(false)
+    setScoreMsg(res.ok ? `✓ ${data.matchesProcessed} jogos recalculados` : "Erro ao recalcular")
+  }
+
   async function handleLogout() {
     await fetch("/api/admin/auth", { method: "DELETE" })
     router.push("/admin")
@@ -114,6 +125,11 @@ export default function AdminDashboard() {
               Sincronizar Agora
             </Button>
             {syncMsg && <span className="text-sm text-muted-foreground">{syncMsg}</span>}
+            <Button onClick={handleRecalculate} disabled={scoring} variant="outline" size="sm">
+              {scoring ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Calculator className="w-4 h-4 mr-2" />}
+              Recalcular Pontos
+            </Button>
+            {scoreMsg && <span className="text-sm text-muted-foreground">{scoreMsg}</span>}
           </CardContent>
         </Card>
 

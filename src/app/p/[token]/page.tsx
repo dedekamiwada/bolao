@@ -152,13 +152,21 @@ export default async function ParticipantPage({ params }: { params: Promise<{ to
           </Card>
         )}
 
-        {/* Link para ranking */}
-        <Button asChild variant="outline" className="w-full">
-          <Link href="/">
-            <Trophy className="w-4 h-4 mr-2" />
-            Ver Ranking Geral
-          </Link>
-        </Button>
+        {/* Links de navegação */}
+        <div className="flex gap-2">
+          <Button asChild variant="outline" className="flex-1">
+            <Link href="/">
+              <Trophy className="w-4 h-4 mr-2" />
+              Ranking
+            </Link>
+          </Button>
+          <Button asChild variant="outline" className="flex-1">
+            <Link href={`/p/${token}/history`}>
+              <TrendingUp className="w-4 h-4 mr-2" />
+              Evolução
+            </Link>
+          </Button>
+        </div>
       </div>
     </main>
   )
