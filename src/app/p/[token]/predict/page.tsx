@@ -7,11 +7,10 @@ import { SimulatedStandings } from "@/components/predict/SimulatedStandings"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { ArrowLeft, Save, Loader2, Calendar, LayoutGrid, Lock, Clock } from "lucide-react"
+import { ArrowLeft, Save, Loader2, Calendar, LayoutGrid, Lock, Clock, List } from "lucide-react"
 import Link from "next/link"
 import { GROUP_LETTERS } from "@/types/domain"
-import { formatDate } from "@/lib/utils"
-import { getGroupRound, getRoundFirstMatchAt, getRoundLastMatchAt } from "@/lib/group-rounds"
+import { getGroupRound } from "@/lib/group-rounds"
 
 interface Team {
   id: number
@@ -41,40 +40,57 @@ interface Prediction {
   is_locked: boolean
 }
 
+/** Info computed globally (same for every match in the same round number) */
 interface RoundInfo {
   roundNumber: 1 | 2 | 3
-  roundFirstMatchAt: string
-  prevRoundLastMatchAt: string | null
+  roundFirstMatchAt: string   // earliest scheduled_at in this global round → determines lock time
+  prevRoundLastMatchAt: string | null // latest scheduled_at in the previous global round → determines when this round opens
 }
 
-type ViewMode = "group" | "date"
+type ViewMode = "group" | "round" | "date"
 
 const CUTOFF_MINUTES = 15
 
-function computeRoundInfo(match: Match, groupMatches: Match[]): RoundInfo {
-  const round = getGroupRound(match.match_number)
-  const roundFirstMatchAt = getRoundFirstMatchAt(groupMatches, round)
-  let prevRoundLastMatchAt: string | null = null
-  if (round > 1) {
-    const prevRound = (round - 1) as 1 | 2 | 3
-    prevRoundLastMatchAt = getRoundLastMatchAt(groupMatches, prevRound)
-  }
-  return { roundNumber: round, roundFirstMatchAt, prevRoundLastMatchAt }
+// ─── Pure helpers (no React) ─────────────────────────────────────────────────
+
+function roundLockTime(roundFirstMatchAt: string): number {
+  return new Date(roundFirstMatchAt).getTime() - CUTOFF_MINUTES * 60 * 1000
 }
 
 function isRoundLocked(roundFirstMatchAt: string, now: number): boolean {
-  return now >= new Date(roundFirstMatchAt).getTime() - CUTOFF_MINUTES * 60 * 1000
+  return now >= roundLockTime(roundFirstMatchAt)
 }
 
 function isRoundNotYetOpen(prevRoundLastMatchAt: string | null, now: number): boolean {
   return prevRoundLastMatchAt !== null && now < new Date(prevRoundLastMatchAt).getTime()
 }
 
-function RoundBadge({
-  roundNumber,
-  roundFirstMatchAt,
-  prevRoundLastMatchAt,
-  now,
+function formatRemainingTime(ms: number): string {
+  const totalSeconds = Math.floor(ms / 1000)
+  const d = Math.floor(totalSeconds / 86400)
+  const h = Math.floor((totalSeconds % 86400) / 3600)
+  const m = Math.floor((totalSeconds % 3600) / 60)
+  if (d > 0) return `${d}d ${h}h`
+  if (h > 0) return `${h}h ${m}m`
+  return `${m}m`
+}
+
+function formatMatchTime(scheduledAt: string): string {
+  return new Date(scheduledAt).toLocaleTimeString("pt-BR", {
+    hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo",
+  })
+}
+
+function formatMatchDate(scheduledAt: string): string {
+  return new Date(scheduledAt).toLocaleDateString("pt-BR", {
+    weekday: "short", day: "2-digit", month: "2-digit", timeZone: "America/Sao_Paulo",
+  })
+}
+
+// ─── Small display component for round status badge ─────────────────────────
+
+function RoundStatusBadge({
+  roundNumber, roundFirstMatchAt, prevRoundLastMatchAt, now,
 }: {
   roundNumber: 1 | 2 | 3
   roundFirstMatchAt: string
@@ -94,26 +110,19 @@ function RoundBadge({
   if (notYetOpen) {
     return (
       <span className="flex items-center gap-1 text-xs text-muted-foreground">
-        <Clock className="w-3 h-3" /> Aguardando Rodada {roundNumber - 1}
+        <Clock className="w-3 h-3" /> Aguardando Rodada {roundNumber - 1} terminar
       </span>
     )
   }
-
-  // Open — show remaining time to lock
-  const lockTime = new Date(roundFirstMatchAt).getTime() - CUTOFF_MINUTES * 60 * 1000
-  const remaining = Math.max(0, lockTime - now)
-  const totalSeconds = Math.floor(remaining / 1000)
-  const d = Math.floor(totalSeconds / 86400)
-  const h = Math.floor((totalSeconds % 86400) / 3600)
-  const m = Math.floor((totalSeconds % 3600) / 60)
-  const timeLabel = d > 0 ? `${d}d ${h}h` : h > 0 ? `${h}h ${m}m` : `${m}m`
-
+  const remaining = Math.max(0, roundLockTime(roundFirstMatchAt) - now)
   return (
     <span className="text-xs text-green-600 font-medium">
-      Aberta · fecha em {timeLabel}
+      Aberta · fecha em {formatRemainingTime(remaining)}
     </span>
   )
 }
+
+// ─── Main page ───────────────────────────────────────────────────────────────
 
 export default function PredictPage() {
   const { token } = useParams<{ token: string }>()
@@ -126,12 +135,12 @@ export default function PredictPage() {
   const [saving, setSaving] = useState(false)
   const [saveMsg, setSaveMsg] = useState("")
   const [activeGroup, setActiveGroup] = useState("A")
-  const [viewMode, setViewMode] = useState<ViewMode>("group")
+  const [viewMode, setViewMode] = useState<ViewMode>("round")
   const [selectedDate, setSelectedDate] = useState<string | null>(null)
   const [statusFilter, setStatusFilter] = useState<"all" | "upcoming" | "done">("upcoming")
   const [now, setNow] = useState(Date.now())
 
-  // Tick every 10 seconds to keep round status fresh
+  // Tick every 10 s to keep round status fresh
   useEffect(() => {
     const interval = setInterval(() => setNow(Date.now()), 10_000)
     return () => clearInterval(interval)
@@ -158,16 +167,43 @@ export default function PredictPage() {
     setPredictions(prev => new Map(prev).set(matchId, { home, away }))
   }, [])
 
-  // Pre-compute round info for every match
+  // ─── Global round boundaries (computed once from ALL matches) ──────────────
+  const globalRoundBoundaries = useMemo(() => {
+    const result = new Map<1 | 2 | 3, { firstMatchAt: string; lastMatchAt: string }>()
+    for (const round of [1, 2, 3] as const) {
+      const rm = matches.filter(m => getGroupRound(m.match_number) === round)
+      if (rm.length === 0) continue
+      const firstMatchAt = rm.reduce(
+        (min, m) => new Date(m.scheduled_at) < new Date(min) ? m.scheduled_at : min,
+        rm[0].scheduled_at
+      )
+      const lastMatchAt = rm.reduce(
+        (max, m) => new Date(m.scheduled_at) > new Date(max) ? m.scheduled_at : max,
+        rm[0].scheduled_at
+      )
+      result.set(round, { firstMatchAt, lastMatchAt })
+    }
+    return result
+  }, [matches])
+
+  // Per-match round info (pointing to the global boundaries)
   const matchRoundInfo = useMemo(() => {
     const info = new Map<number, RoundInfo>()
     for (const match of matches) {
-      const groupMatches = matches.filter(m => m.group_letter === match.group_letter)
-      info.set(match.id, computeRoundInfo(match, groupMatches))
+      const round = getGroupRound(match.match_number)
+      const boundary = globalRoundBoundaries.get(round)
+      if (!boundary) continue
+      const prevBoundary = round > 1 ? globalRoundBoundaries.get((round - 1) as 1 | 2 | 3) : undefined
+      info.set(match.id, {
+        roundNumber: round,
+        roundFirstMatchAt: boundary.firstMatchAt,
+        prevRoundLastMatchAt: prevBoundary?.lastMatchAt ?? null,
+      })
     }
     return info
-  }, [matches])
+  }, [matches, globalRoundBoundaries])
 
+  // ─── Save ──────────────────────────────────────────────────────────────────
   async function handleSave() {
     setSaving(true)
     setSaveMsg("")
@@ -197,27 +233,19 @@ export default function PredictPage() {
     }
   }
 
-  const groupsWithMatches = GROUP_LETTERS.filter(g =>
-    matches.some(m => m.group_letter === g)
-  )
+  const groupsWithMatches = GROUP_LETTERS.filter(g => matches.some(m => m.group_letter === g))
 
-  // Swipe to navigate between groups
+  // Swipe between groups
   const touchStartX = useRef<number | null>(null)
-  function handleTouchStart(e: React.TouchEvent) {
-    touchStartX.current = e.touches[0].clientX
-  }
+  function handleTouchStart(e: React.TouchEvent) { touchStartX.current = e.touches[0].clientX }
   function handleTouchEnd(e: React.TouchEvent) {
     if (touchStartX.current === null) return
     const deltaX = e.changedTouches[0].clientX - touchStartX.current
     touchStartX.current = null
     if (Math.abs(deltaX) < 50) return
-
-    const currentIdx = groupsWithMatches.indexOf(activeGroup as typeof GROUP_LETTERS[number])
-    if (deltaX < 0 && currentIdx < groupsWithMatches.length - 1) {
-      setActiveGroup(groupsWithMatches[currentIdx + 1])
-    } else if (deltaX > 0 && currentIdx > 0) {
-      setActiveGroup(groupsWithMatches[currentIdx - 1])
-    }
+    const idx = groupsWithMatches.indexOf(activeGroup as typeof GROUP_LETTERS[number])
+    if (deltaX < 0 && idx < groupsWithMatches.length - 1) setActiveGroup(groupsWithMatches[idx + 1])
+    else if (deltaX > 0 && idx > 0) setActiveGroup(groupsWithMatches[idx - 1])
   }
 
   // Group matches by date (for date view)
@@ -227,22 +255,63 @@ export default function PredictPage() {
     )
     const byDate = new Map<string, Match[]>()
     for (const m of sorted) {
-      const dateKey = new Date(m.scheduled_at).toLocaleDateString("pt-BR", {
-        weekday: "short", day: "2-digit", month: "2-digit", timeZone: "America/Sao_Paulo"
-      })
-      if (!byDate.has(dateKey)) byDate.set(dateKey, [])
-      byDate.get(dateKey)!.push(m)
+      const key = formatMatchDate(m.scheduled_at)
+      if (!byDate.has(key)) byDate.set(key, [])
+      byDate.get(key)!.push(m)
     }
     return byDate
   }, [matches])
 
-  // Only count pending predictions in currently-open rounds
+  // Group matches by round+date (for round view)
+  const matchesByRoundAndDate = useMemo(() => {
+    const result = new Map<1 | 2 | 3, Map<string, Match[]>>()
+    for (const round of [1, 2, 3] as const) {
+      const rm = matches
+        .filter(m => getGroupRound(m.match_number) === round)
+        .sort((a, b) => new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime())
+      const byDate = new Map<string, Match[]>()
+      for (const m of rm) {
+        const key = formatMatchDate(m.scheduled_at)
+        if (!byDate.has(key)) byDate.set(key, [])
+        byDate.get(key)!.push(m)
+      }
+      result.set(round, byDate)
+    }
+    return result
+  }, [matches])
+
+  // Pending count — only open-round matches
   const pendingCount = matches.filter(m => {
     if (predictions.has(m.id) || m.status !== "SCHEDULED") return false
     const info = matchRoundInfo.get(m.id)
     if (!info) return false
     return !isRoundLocked(info.roundFirstMatchAt, now) && !isRoundNotYetOpen(info.prevRoundLastMatchAt, now)
   }).length
+
+  // Helper to render a GroupMatchCard given a match
+  function renderCard(m: Match) {
+    const info = matchRoundInfo.get(m.id)
+    if (!info) return null
+    return (
+      <GroupMatchCard
+        key={m.id}
+        matchId={m.id}
+        homeTeam={m.home_team}
+        awayTeam={m.away_team}
+        scheduledAt={m.scheduled_at}
+        roundFirstMatchAt={info.roundFirstMatchAt}
+        prevRoundLastMatchAt={info.prevRoundLastMatchAt}
+        roundNumber={info.roundNumber}
+        status={m.status}
+        officialHomeScore={m.home_score}
+        officialAwayScore={m.away_score}
+        predictedHomeScore={predictions.get(m.id)?.home}
+        predictedAwayScore={predictions.get(m.id)?.away}
+        isLocked={lockedMatches.has(m.id)}
+        onChange={handleChange}
+      />
+    )
+  }
 
   if (loading) return (
     <div className="flex items-center justify-center min-h-screen">
@@ -266,24 +335,105 @@ export default function PredictPage() {
             </p>
           </div>
         </div>
-        {/* Toggle view */}
-        <div className="flex items-center gap-1 bg-green-800 rounded-lg p-1">
-          <button
-            onClick={() => setViewMode("group")}
-            className={`flex items-center gap-1 px-2 py-1 rounded-md text-xs transition-colors ${viewMode === "group" ? "bg-white text-green-900 font-semibold" : "text-green-300 hover:text-white"}`}
-          >
-            <LayoutGrid className="w-3.5 h-3.5" /> Grupo
-          </button>
-          <button
-            onClick={() => setViewMode("date")}
-            className={`flex items-center gap-1 px-2 py-1 rounded-md text-xs transition-colors ${viewMode === "date" ? "bg-white text-green-900 font-semibold" : "text-green-300 hover:text-white"}`}
-          >
-            <Calendar className="w-3.5 h-3.5" /> Data
-          </button>
+        {/* View toggle */}
+        <div className="flex items-center gap-0.5 bg-green-800 rounded-lg p-1">
+          {(["group", "round", "date"] as const).map(mode => {
+            const icon = mode === "group" ? <LayoutGrid className="w-3.5 h-3.5" />
+              : mode === "round" ? <List className="w-3.5 h-3.5" />
+              : <Calendar className="w-3.5 h-3.5" />
+            const label = mode === "group" ? "Grupo" : mode === "round" ? "Rodada" : "Data"
+            return (
+              <button
+                key={mode}
+                onClick={() => setViewMode(mode)}
+                className={`flex items-center gap-1 px-2 py-1 rounded-md text-xs transition-colors ${
+                  viewMode === mode ? "bg-white text-green-900 font-semibold" : "text-green-300 hover:text-white"
+                }`}
+              >
+                {icon} {label}
+              </button>
+            )
+          })}
         </div>
       </div>
 
       <div className="max-w-2xl mx-auto px-3 py-4">
+
+        {/* ── VISÃO POR RODADA ── */}
+        {viewMode === "round" && (
+          <div className="space-y-6">
+            {([1, 2, 3] as const).map(roundNum => {
+              const boundary = globalRoundBoundaries.get(roundNum)
+              if (!boundary) return null
+              const prevBoundary = roundNum > 1 ? globalRoundBoundaries.get((roundNum - 1) as 1 | 2 | 3) : undefined
+              const prevLastMatchAt = prevBoundary?.lastMatchAt ?? null
+              const locked = isRoundLocked(boundary.firstMatchAt, now)
+              const notYetOpen = isRoundNotYetOpen(prevLastMatchAt, now)
+              const byDate = matchesByRoundAndDate.get(roundNum)!
+              const roundPredCount = [...byDate.values()].flat().filter(m => predictions.has(m.id)).length
+              const roundTotalCount = [...byDate.values()].flat().length
+
+              return (
+                <div key={roundNum}>
+                  {/* Round section header */}
+                  <div className={`flex items-center justify-between px-3 py-2 rounded-t-lg border-b ${
+                    locked ? "bg-orange-50 dark:bg-orange-950/20 border-orange-200"
+                    : notYetOpen ? "bg-muted border-border"
+                    : "bg-green-50 dark:bg-green-950/20 border-green-200"
+                  }`}>
+                    <div className="flex items-center gap-2">
+                      <span className={`text-sm font-bold ${
+                        locked ? "text-orange-700 dark:text-orange-400"
+                        : notYetOpen ? "text-muted-foreground"
+                        : "text-green-700 dark:text-green-400"
+                      }`}>
+                        Rodada {roundNum}
+                      </span>
+                      <RoundStatusBadge
+                        roundNumber={roundNum}
+                        roundFirstMatchAt={boundary.firstMatchAt}
+                        prevRoundLastMatchAt={prevLastMatchAt}
+                        now={now}
+                      />
+                    </div>
+                    <span className="text-xs text-muted-foreground">
+                      {roundPredCount}/{roundTotalCount} ✓
+                    </span>
+                  </div>
+
+                  {/* Round matches grouped by date */}
+                  <div className="border border-t-0 rounded-b-lg divide-y overflow-hidden">
+                    {[...byDate.entries()].map(([dateKey, dayMatches]) => (
+                      <div key={dateKey} className="bg-card">
+                        <div className="px-3 py-1.5 bg-muted/50 flex items-center gap-2">
+                          <span className="text-xs font-semibold capitalize text-muted-foreground">{dateKey}</span>
+                          <span className="text-xs text-muted-foreground ml-auto">
+                            {dayMatches.filter(m => predictions.has(m.id)).length}/{dayMatches.length} ✓
+                          </span>
+                        </div>
+                        <div className="p-2 space-y-2">
+                          {dayMatches.map(m => (
+                            <div key={m.id}>
+                              <div className="flex items-center gap-2 mb-1 px-1">
+                                <span className="text-xs text-muted-foreground">{formatMatchTime(m.scheduled_at)}</span>
+                                <span className="text-xs text-muted-foreground">·</span>
+                                <span className="text-xs font-medium text-green-700">Grupo {m.group_letter}</span>
+                                {predictions.has(m.id) && (
+                                  <span className="text-xs text-green-600 ml-auto">✓</span>
+                                )}
+                              </div>
+                              {renderCard(m)}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
 
         {/* ── VISÃO POR GRUPO ── */}
         {viewMode === "group" && (
@@ -294,9 +444,7 @@ export default function PredictPage() {
             </p>
             <TabsList className="flex flex-wrap h-auto gap-1 mb-4 bg-muted p-1">
               {groupsWithMatches.map(g => {
-                const groupPreds = matches
-                  .filter(m => m.group_letter === g)
-                  .filter(m => predictions.has(m.id)).length
+                const groupPreds = matches.filter(m => m.group_letter === g && predictions.has(m.id)).length
                 return (
                   <TabsTrigger key={g} value={g} className="text-xs px-2 py-1 relative">
                     {g}
@@ -319,48 +467,25 @@ export default function PredictPage() {
                           m => getGroupRound(m.match_number) === roundNum
                         )
                         if (roundMatches.length === 0) return null
-
-                        const firstInfo = matchRoundInfo.get(roundMatches[0].id)
-                        if (!firstInfo) return null
+                        const boundary = globalRoundBoundaries.get(roundNum)
+                        if (!boundary) return null
+                        const prevBoundary = roundNum > 1 ? globalRoundBoundaries.get((roundNum - 1) as 1 | 2 | 3) : undefined
 
                         return (
                           <div key={roundNum} className="space-y-1.5">
-                            {/* Round header */}
                             <div className="flex items-center gap-2 px-0.5">
                               <span className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
                                 Rodada {roundNum}
                               </span>
-                              <RoundBadge
+                              <RoundStatusBadge
                                 roundNumber={roundNum}
-                                roundFirstMatchAt={firstInfo.roundFirstMatchAt}
-                                prevRoundLastMatchAt={firstInfo.prevRoundLastMatchAt}
+                                roundFirstMatchAt={boundary.firstMatchAt}
+                                prevRoundLastMatchAt={prevBoundary?.lastMatchAt ?? null}
                                 now={now}
                               />
                             </div>
-                            {/* Match cards */}
                             <div className="space-y-2">
-                              {roundMatches.map(m => {
-                                const info = matchRoundInfo.get(m.id)!
-                                return (
-                                  <GroupMatchCard
-                                    key={m.id}
-                                    matchId={m.id}
-                                    homeTeam={m.home_team}
-                                    awayTeam={m.away_team}
-                                    scheduledAt={m.scheduled_at}
-                                    roundFirstMatchAt={info.roundFirstMatchAt}
-                                    prevRoundLastMatchAt={info.prevRoundLastMatchAt}
-                                    roundNumber={info.roundNumber}
-                                    status={m.status}
-                                    officialHomeScore={m.home_score}
-                                    officialAwayScore={m.away_score}
-                                    predictedHomeScore={predictions.get(m.id)?.home}
-                                    predictedAwayScore={predictions.get(m.id)?.away}
-                                    isLocked={lockedMatches.has(m.id)}
-                                    onChange={handleChange}
-                                  />
-                                )
-                              })}
+                              {roundMatches.map(m => renderCard(m))}
                             </div>
                           </div>
                         )
@@ -390,7 +515,6 @@ export default function PredictPage() {
         {/* ── VISÃO POR DATA ── */}
         {viewMode === "date" && (
           <div className="space-y-4">
-
             {/* Filtro de status */}
             <div className="flex gap-2">
               {(["upcoming", "done", "all"] as const).map(f => {
@@ -427,10 +551,9 @@ export default function PredictPage() {
                 const dayMatches = matchesByDate.get(dateKey)!
                 const hasPending = dayMatches.some(m => {
                   const info = matchRoundInfo.get(m.id)
-                  if (!info) return false
-                  const roundLocked = isRoundLocked(info.roundFirstMatchAt, now)
-                  const notYetOpen = isRoundNotYetOpen(info.prevRoundLastMatchAt, now)
-                  return !roundLocked && !notYetOpen && m.status === "SCHEDULED" && !predictions.has(m.id)
+                  return info && !isRoundLocked(info.roundFirstMatchAt, now)
+                    && !isRoundNotYetOpen(info.prevRoundLastMatchAt, now)
+                    && m.status === "SCHEDULED" && !predictions.has(m.id)
                 })
                 return (
                   <button
@@ -451,10 +574,10 @@ export default function PredictPage() {
               })}
             </div>
 
-            {/* Lista de jogos filtrada */}
+            {/* Lista de jogos */}
             <div className="space-y-6">
               {[...matchesByDate.entries()]
-                .filter(([dateKey]) => selectedDate === null || dateKey === selectedDate)
+                .filter(([dk]) => selectedDate === null || dk === selectedDate)
                 .map(([dateKey, dayMatches]) => {
                   const filtered = dayMatches.filter(m => {
                     const isFinished = m.status === "FINISHED" || m.status === "LIVE"
@@ -467,26 +590,20 @@ export default function PredictPage() {
                   })
                   if (filtered.length === 0) return null
 
-                  const hasPending = filtered.some(m => {
+                  const pendingInDay = filtered.filter(m => {
                     const info = matchRoundInfo.get(m.id)
-                    if (!info) return false
-                    return !isRoundLocked(info.roundFirstMatchAt, now) &&
-                      !isRoundNotYetOpen(info.prevRoundLastMatchAt, now) &&
-                      !predictions.has(m.id) && m.status === "SCHEDULED"
-                  })
+                    return !predictions.has(m.id) && m.status === "SCHEDULED"
+                      && info && !isRoundLocked(info.roundFirstMatchAt, now)
+                      && !isRoundNotYetOpen(info.prevRoundLastMatchAt, now)
+                  }).length
 
                   return (
                     <div key={dateKey}>
                       <div className="flex items-center gap-2 mb-2 px-1">
                         <h3 className="text-sm font-semibold capitalize">{dateKey}</h3>
-                        {hasPending && (
+                        {pendingInDay > 0 && (
                           <span className="text-xs bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full">
-                            {filtered.filter(m => {
-                              const info = matchRoundInfo.get(m.id)
-                              return !predictions.has(m.id) && m.status === "SCHEDULED" &&
-                                info && !isRoundLocked(info.roundFirstMatchAt, now) &&
-                                !isRoundNotYetOpen(info.prevRoundLastMatchAt, now)
-                            }).length} sem palpite
+                            {pendingInDay} sem palpite
                           </span>
                         )}
                         <span className="text-xs text-muted-foreground ml-auto">
@@ -499,11 +616,7 @@ export default function PredictPage() {
                           return (
                             <div key={m.id}>
                               <div className="flex items-center gap-2 mb-1 px-1">
-                                <span className="text-xs text-muted-foreground">
-                                  {new Date(m.scheduled_at).toLocaleTimeString("pt-BR", {
-                                    hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo"
-                                  })}
-                                </span>
+                                <span className="text-xs text-muted-foreground">{formatMatchTime(m.scheduled_at)}</span>
                                 <span className="text-xs text-muted-foreground">·</span>
                                 <span className="text-xs font-medium text-green-700">
                                   Grupo {m.group_letter} · Rod. {info.roundNumber}
@@ -512,22 +625,7 @@ export default function PredictPage() {
                                   <span className="text-xs text-green-600 ml-auto">✓ palpitado</span>
                                 )}
                               </div>
-                              <GroupMatchCard
-                                matchId={m.id}
-                                homeTeam={m.home_team}
-                                awayTeam={m.away_team}
-                                scheduledAt={m.scheduled_at}
-                                roundFirstMatchAt={info.roundFirstMatchAt}
-                                prevRoundLastMatchAt={info.prevRoundLastMatchAt}
-                                roundNumber={info.roundNumber}
-                                status={m.status}
-                                officialHomeScore={m.home_score}
-                                officialAwayScore={m.away_score}
-                                predictedHomeScore={predictions.get(m.id)?.home}
-                                predictedAwayScore={predictions.get(m.id)?.away}
-                                isLocked={lockedMatches.has(m.id)}
-                                onChange={handleChange}
-                              />
+                              {renderCard(m)}
                             </div>
                           )
                         })}
@@ -536,11 +634,10 @@ export default function PredictPage() {
                   )
                 })}
 
-              {/* Mensagem quando filtro não retorna nada */}
               {[...matchesByDate.entries()]
-                .filter(([dateKey]) => selectedDate === null || dateKey === selectedDate)
-                .every(([, dayMatches]) => {
-                  const filtered = dayMatches.filter(m => {
+                .filter(([dk]) => selectedDate === null || dk === selectedDate)
+                .every(([, dm]) => {
+                  const filtered = dm.filter(m => {
                     const isFinished = m.status === "FINISHED" || m.status === "LIVE"
                     const info = matchRoundInfo.get(m.id)
                     const roundLocked = info ? isRoundLocked(info.roundFirstMatchAt, now) : false
@@ -552,9 +649,7 @@ export default function PredictPage() {
                   return filtered.length === 0
                 }) && (
                 <div className="text-center py-12 text-muted-foreground">
-                  <p className="text-3xl mb-2">
-                    {statusFilter === "upcoming" ? "🎉" : "📭"}
-                  </p>
+                  <p className="text-3xl mb-2">{statusFilter === "upcoming" ? "🎉" : "📭"}</p>
                   <p className="text-sm">
                     {statusFilter === "upcoming"
                       ? "Todos os palpites desta data já estão encerrados!"

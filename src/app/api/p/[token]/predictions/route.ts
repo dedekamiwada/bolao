@@ -46,7 +46,7 @@ export async function POST(
 
   const supabase = createAdminClient()
 
-  // Fetch submitted matches with match_number and group_letter for round validation
+  // Fetch submitted matches for basic validation
   const matchIds = predictions.map((p: { matchId: number }) => p.matchId)
   const { data: predMatches } = await supabase
     .from("matches")
@@ -56,26 +56,22 @@ export async function POST(
 
   if (!predMatches) return NextResponse.json({ error: "Jogos não encontrados" }, { status: 400 })
 
-  // Fetch all group matches for the involved groups to compute round boundaries
-  const groupLetters = [...new Set(predMatches.map((m: { group_letter: string }) => m.group_letter))]
+  // Fetch ALL group matches to compute GLOBAL round boundaries (not just the involved groups)
   const { data: allGroupMatches } = await supabase
     .from("matches")
     .select("id, match_number, group_letter, scheduled_at")
     .eq("stage", "GROUP")
-    .in("group_letter", groupLetters)
 
   if (!allGroupMatches) return NextResponse.json({ error: "Erro ao buscar rodadas" }, { status: 500 })
 
-  // Validate each prediction using round-based lock logic
+  // Validate each prediction using GLOBAL round-based lock logic
   const validPredictions = []
   for (const pred of predictions) {
     const match = predMatches.find((m: { id: number }) => m.id === pred.matchId)
     if (!match) continue
 
-    const groupMatches = allGroupMatches.filter(
-      (m: { group_letter: string }) => m.group_letter === match.group_letter
-    )
-    if (!isGroupMatchBettable(match, groupMatches)) continue // silently skip locked/not-open
+    // Pass ALL group matches so round boundaries are computed globally
+    if (!isGroupMatchBettable(match, allGroupMatches)) continue // silently skip locked/not-open
 
     if (pred.homeScore < 0 || pred.awayScore < 0) continue
 
