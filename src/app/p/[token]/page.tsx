@@ -4,7 +4,7 @@ import { createAdminClient } from "@/lib/supabase/admin"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Trophy, ClipboardList, TrendingUp, Clock } from "lucide-react"
+import { Trophy, ClipboardList, TrendingUp, Clock, BookOpen } from "lucide-react"
 import Link from "next/link"
 import { formatDate } from "@/lib/utils"
 
@@ -153,17 +153,23 @@ export default async function ParticipantPage({ params }: { params: Promise<{ to
         )}
 
         {/* Links de navegação */}
-        <div className="flex gap-2">
-          <Button asChild variant="outline" className="flex-1">
+        <div className="grid grid-cols-3 gap-2">
+          <Button asChild variant="outline" size="sm" className="flex-1">
             <Link href="/">
-              <Trophy className="w-4 h-4 mr-2" />
+              <Trophy className="w-4 h-4 mr-1" />
               Ranking
             </Link>
           </Button>
-          <Button asChild variant="outline" className="flex-1">
+          <Button asChild variant="outline" size="sm" className="flex-1">
             <Link href={`/p/${token}/history`}>
-              <TrendingUp className="w-4 h-4 mr-2" />
+              <TrendingUp className="w-4 h-4 mr-1" />
               Evolução
+            </Link>
+          </Button>
+          <Button asChild variant="outline" size="sm" className="flex-1">
+            <Link href={`/p/${token}/rules`}>
+              <BookOpen className="w-4 h-4 mr-1" />
+              Regras
             </Link>
           </Button>
         </div>

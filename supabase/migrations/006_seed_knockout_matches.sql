@@ -100,6 +100,6 @@ UPDATE pool_config SET value = '[
 ]'::jsonb WHERE key = 'r16_bracket';
 
 -- Verificar total de partidas
-SELECT stage, count(*) FROM matches GROUP BY stage ORDER BY
-  CASE stage WHEN ''GROUP'' THEN 1 WHEN ''R32'' THEN 2 WHEN ''R16'' THEN 3
-    WHEN ''QF'' THEN 4 WHEN ''SF'' THEN 5 WHEN ''3RD'' THEN 6 WHEN ''FINAL'' THEN 7 END;
+SELECT stage, count(*) as total FROM matches
+GROUP BY stage
+ORDER BY min(match_number);
