@@ -28,21 +28,3 @@ export function scoreGroupMatch(
   return { exactScore: 0, result: 0, goalDiff: 0, total: 0 }
 }
 
-export function scoreGroupClassification(
-  predicted: number[], // [1st, 2nd, 3rd, 4th] team IDs
-  actual: number[]     // [1st, 2nd, 3rd, 4th] team IDs
-): number {
-  let points = 0
-  for (let pos = 0; pos < 4; pos++) {
-    const predictedTeam = predicted[pos]
-    if (!predictedTeam) continue
-    const actualPos = actual.indexOf(predictedTeam)
-    if (actualPos === pos) {
-      points += 4 // exact position
-    } else if (actualPos !== -1 && actualPos <= 1 && pos <= 1) {
-      // Team is in top-2 but wrong position
-      points += 2
-    }
-  }
-  return points
-}

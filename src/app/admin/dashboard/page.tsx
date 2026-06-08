@@ -96,10 +96,22 @@ export default function AdminDashboard() {
   async function handleSync() {
     setSyncing(true)
     setSyncMsg("")
-    const res = await fetch("/api/admin/matches/sync", { method: "POST" })
-    const data = await res.json()
-    setSyncing(false)
-    setSyncMsg(res.ok ? `✓ ${data.synced} jogos sincronizados` : "Erro ao sincronizar")
+    try {
+      const res = await fetch("/api/admin/matches/sync", { method: "POST" })
+      const data = await res.json()
+      setSyncing(false)
+      if (res.ok) {
+        const parts = [`✓ ${data.synced} jogos verificados`]
+        if (data.linked > 0) parts.push(`${data.linked} IDs linkados`)
+        if ((data.newlyFinished?.length ?? 0) > 0) parts.push(`${data.newlyFinished.length} recém-finalizados`)
+        setSyncMsg(parts.join(" · "))
+      } else {
+        setSyncMsg(`❌ ${data.error ?? "Erro desconhecido"}`)
+      }
+    } catch (err) {
+      setSyncing(false)
+      setSyncMsg(`❌ Erro de rede: ${String(err)}`)
+    }
   }
 
   async function handleRecalculate() {

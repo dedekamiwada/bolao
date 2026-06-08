@@ -7,9 +7,12 @@ export async function POST() {
   if (error) return error
 
   try {
-    const result = await syncMatches()
+    // fullSync=true: busca todos os jogos (inclusive SCHEDULED) para linkar external_ids
+    const result = await syncMatches(true)
     return NextResponse.json({ ok: true, ...result })
   } catch (err) {
-    return NextResponse.json({ error: String(err) }, { status: 500 })
+    const message = err instanceof Error ? err.message : String(err)
+    console.error("[sync-matches]", message)
+    return NextResponse.json({ error: message }, { status: 500 })
   }
 }
