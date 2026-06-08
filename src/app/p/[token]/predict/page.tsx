@@ -136,6 +136,7 @@ export default function PredictPage() {
   const [saveMsg, setSaveMsg] = useState("")
   const [activeGroup, setActiveGroup] = useState("A")
   const [viewMode, setViewMode] = useState<ViewMode>("round")
+  const [selectedRound, setSelectedRound] = useState<1 | 2 | 3 | null>(null)
   const [selectedDate, setSelectedDate] = useState<string | null>(null)
   const [statusFilter, setStatusFilter] = useState<"all" | "upcoming" | "done">("upcoming")
   const [now, setNow] = useState(Date.now())
@@ -361,8 +362,41 @@ export default function PredictPage() {
 
         {/* ── VISÃO POR RODADA ── */}
         {viewMode === "round" && (
-          <div className="space-y-6">
-            {([1, 2, 3] as const).map(roundNum => {
+          <div className="space-y-4">
+
+            {/* Seletor de rodada */}
+            <div className="flex gap-2">
+              {([null, 1, 2, 3] as const).map(r => {
+                const label = r === null ? "Todas" : `Rodada ${r}`
+                const boundary = r !== null ? globalRoundBoundaries.get(r) : undefined
+                const prevBoundary = r !== null && r > 1 ? globalRoundBoundaries.get((r - 1) as 1 | 2 | 3) : undefined
+                const locked = boundary ? isRoundLocked(boundary.firstMatchAt, now) : false
+                const notYetOpen = boundary ? isRoundNotYetOpen(prevBoundary?.lastMatchAt ?? null, now) : false
+                const isActive = selectedRound === r
+                return (
+                  <button
+                    key={String(r)}
+                    onClick={() => setSelectedRound(r)}
+                    className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-medium border transition-colors ${
+                      isActive
+                        ? "bg-green-700 text-white border-green-700"
+                        : "bg-background text-muted-foreground border-border hover:bg-muted"
+                    }`}
+                  >
+                    {label}
+                    {r !== null && (
+                      <span className={`ml-1 ${isActive ? "text-green-200" : locked ? "text-orange-400" : notYetOpen ? "text-muted-foreground" : "text-green-500"}`}>
+                        {locked ? "🔒" : notYetOpen ? "⏳" : "✏️"}
+                      </span>
+                    )}
+                  </button>
+                )
+              })}
+            </div>
+
+            {/* Lista de rodadas filtrada */}
+            <div className="space-y-6">
+            {([1, 2, 3] as const).filter(r => selectedRound === null || selectedRound === r).map(roundNum => {
               const boundary = globalRoundBoundaries.get(roundNum)
               if (!boundary) return null
               const prevBoundary = roundNum > 1 ? globalRoundBoundaries.get((roundNum - 1) as 1 | 2 | 3) : undefined
@@ -432,6 +466,7 @@ export default function PredictPage() {
                 </div>
               )
             })}
+            </div>
           </div>
         )}
 
