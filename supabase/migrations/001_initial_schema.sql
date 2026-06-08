@@ -15,7 +15,7 @@ CREATE TABLE teams (
 CREATE TABLE matches (
   id                  SERIAL PRIMARY KEY,
   external_id         INTEGER UNIQUE,
-  stage               TEXT NOT NULL CHECK (stage IN ('GROUP','R16','QF','SF','3RD','FINAL')),
+  stage               TEXT NOT NULL CHECK (stage IN ('GROUP','R32','R16','QF','SF','3RD','FINAL')),
   group_letter        CHAR(1),
   match_number        INTEGER NOT NULL,
   home_team_id        INTEGER REFERENCES teams(id),

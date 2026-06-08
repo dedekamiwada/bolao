@@ -1,4 +1,4 @@
-export type Stage = "GROUP" | "R16" | "QF" | "SF" | "3RD" | "FINAL"
+export type Stage = "GROUP" | "R32" | "R16" | "QF" | "SF" | "3RD" | "FINAL"
 export type MatchStatus = "SCHEDULED" | "LIVE" | "FINISHED" | "POSTPONED"
 
 export interface Team {
@@ -85,7 +85,8 @@ export type GroupStandings = Record<string, TeamStanding[]>
 
 export const STAGE_LABELS: Record<Stage, string> = {
   GROUP: "Fase de Grupos",
-  R16: "16 avos de Final",
+  R32: "16 avos de Final",
+  R16: "Oitavas de Final",
   QF: "Quartas de Final",
   SF: "Semifinais",
   "3RD": "Disputa de 3º Lugar",
@@ -94,10 +95,11 @@ export const STAGE_LABELS: Record<Stage, string> = {
 
 export const KNOCKOUT_POINTS: Record<Stage, { exact: number; result: number }> = {
   GROUP: { exact: 5, result: 3 },
-  R16: { exact: 6, result: 4 },
+  R32: { exact: 6, result: 4 },
+  R16: { exact: 8, result: 5 },
   QF: { exact: 10, result: 6 },
   SF: { exact: 12, result: 7 },
-  "3RD": { exact: 12, result: 7 },
+  "3RD": { exact: 10, result: 6 },
   FINAL: { exact: 20, result: 12 },
 }
 
