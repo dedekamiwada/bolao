@@ -158,7 +158,7 @@ async function generateClassificationPredictions(
       })
   }
 
-  // Select best 3rd-place teams
-  selectBest3rdPlaceTeams(allGroupStandings)
+  // Select best 3rd-place teams (used by bracket generation when knockout opens)
+  selectBest3rdPlaceTeams(allGroupStandings, groupLetters)
   // (Bracket generation for knockout is handled in the knockout route)
 }

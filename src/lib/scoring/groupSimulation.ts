@@ -86,44 +86,74 @@ function compareTeams(a: TeamStanding, b: TeamStanding): number {
 }
 
 export function selectBest3rdPlaceTeams(
-  allGroupStandings: TeamStanding[][]
-): number[] {
+  allGroupStandings: TeamStanding[][],
+  groupLetters: string[]
+): { teamId: number; groupLetter: string }[] {
   const thirdPlaceTeams = allGroupStandings
-    .map((g) => g[2])
-    .filter(Boolean)
+    .map((g, i) => g[2] ? { ...g[2], groupLetter: groupLetters[i] } : null)
+    .filter(Boolean) as (TeamStanding & { groupLetter: string })[]
 
   return thirdPlaceTeams
     .sort(compareTeams)
     .slice(0, 8)
-    .map((t) => t.teamId)
+    .map((t) => ({ teamId: t.teamId, groupLetter: t.groupLetter }))
 }
 
-// FIFA 2026 R16 bracket: 32 qualified teams from 12 groups
-// 2 from each group (24 teams) + 8 best 3rd-place teams
-// Official bracket seeding will be defined in pool_config
-// This is the default/expected seeding (to be updated when FIFA announces)
-export interface R16Slot {
-  slot: number
-  homeSource: string // e.g. "1A" = 1st of group A, "3ABCD" = best 3rd among A/B/C/D
+// ============================================================
+// FIFA 2026 — Seeding oficial do R32 (16 avos de final)
+// Fonte: Wikipedia / FIFA oficial
+// 24 classificados (1°/2° de cada grupo) + 8 melhores 3°s
+// ============================================================
+export interface R32Slot {
+  matchNumber: number   // match number FIFA (73–88)
+  homeSource: string   // "1A"=1° grupo A, "2B"=2° grupo B, "3ABCDF"=melhor 3° dos grupos A/B/C/D/F
   awaySource: string
 }
 
-export const DEFAULT_R16_BRACKET: R16Slot[] = [
-  { slot: 1,  homeSource: "1A", awaySource: "2B" },
-  { slot: 2,  homeSource: "1C", awaySource: "2D" },
-  { slot: 3,  homeSource: "1E", awaySource: "2F" },
-  { slot: 4,  homeSource: "1G", awaySource: "2H" },
-  { slot: 5,  homeSource: "1I", awaySource: "2J" },
-  { slot: 6,  homeSource: "1K", awaySource: "2L" },
-  { slot: 7,  homeSource: "1B", awaySource: "2A" },
-  { slot: 8,  homeSource: "1D", awaySource: "2C" },
-  { slot: 9,  homeSource: "1F", awaySource: "2E" },
-  { slot: 10, homeSource: "1H", awaySource: "2G" },
-  { slot: 11, homeSource: "1J", awaySource: "2I" },
-  { slot: 12, homeSource: "1L", awaySource: "2K" },
-  // 4 slots for best 3rd-place teams (seeding TBD by FIFA)
-  { slot: 13, homeSource: "3ABCD", awaySource: "3EFGH" },
-  { slot: 14, homeSource: "3IJKL", awaySource: "3BEST" },
-  { slot: 15, homeSource: "3BEST2", awaySource: "3BEST3" },
-  { slot: 16, homeSource: "3BEST4", awaySource: "3BEST5" },
+export const OFFICIAL_R32_BRACKET: R32Slot[] = [
+  { matchNumber: 73, homeSource: "2A",     awaySource: "2B"     },
+  { matchNumber: 74, homeSource: "1C",     awaySource: "2F"     },
+  { matchNumber: 75, homeSource: "1E",     awaySource: "3ABCDF" },
+  { matchNumber: 76, homeSource: "1F",     awaySource: "2C"     },
+  { matchNumber: 77, homeSource: "2E",     awaySource: "2I"     },
+  { matchNumber: 78, homeSource: "1I",     awaySource: "3CDFGH" },
+  { matchNumber: 79, homeSource: "1A",     awaySource: "3CEFHI" },
+  { matchNumber: 80, homeSource: "1L",     awaySource: "3EHIJK" },
+  { matchNumber: 81, homeSource: "1G",     awaySource: "3AEHIJ" },
+  { matchNumber: 82, homeSource: "1D",     awaySource: "3BEFIJ" },
+  { matchNumber: 83, homeSource: "1H",     awaySource: "2J"     },
+  { matchNumber: 84, homeSource: "2K",     awaySource: "2L"     },
+  { matchNumber: 85, homeSource: "1B",     awaySource: "3EFGIJ" },
+  { matchNumber: 86, homeSource: "2D",     awaySource: "2G"     },
+  { matchNumber: 87, homeSource: "1J",     awaySource: "2H"     },
+  { matchNumber: 88, homeSource: "1K",     awaySource: "3DEIJL" },
 ]
+
+/**
+ * Resolve qual time vai para um slot a partir das classificações simuladas.
+ * source: "1A" = 1° do grupo A, "2B" = 2° do grupo B
+ *         "3ABCDF" = melhor 3° colocado dentre os grupos A, B, C, D, F
+ */
+export function resolveTeamFromSource(
+  source: string,
+  groupStandings: Record<string, TeamStanding[]>,
+  best3rds: { teamId: number; groupLetter: string }[]
+): number | null {
+  // "1A", "2B", etc.
+  const directMatch = source.match(/^([12])([A-L])$/)
+  if (directMatch) {
+    const position = parseInt(directMatch[1]) - 1 // 0-indexed
+    const group = directMatch[2]
+    return groupStandings[group]?.[position]?.teamId ?? null
+  }
+
+  // "3ABCDF" — melhor 3° dentre os grupos listados
+  const thirdMatch = source.match(/^3([A-L]+)$/)
+  if (thirdMatch) {
+    const eligibleGroups = thirdMatch[1].split("") // ["A","B","C","D","F"]
+    const eligible = best3rds.filter(t => eligibleGroups.includes(t.groupLetter))
+    return eligible[0]?.teamId ?? null // já vêm ordenados por pontuação
+  }
+
+  return null
+}
