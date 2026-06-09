@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Trophy, ClipboardList, TrendingUp, Clock, BookOpen } from "lucide-react"
 import Link from "next/link"
 import { formatDate } from "@/lib/utils"
+import { TeamFlag } from "@/components/shared/TeamFlag"
 import { getGroupRound, getRoundFirstMatchAt } from "@/lib/group-rounds"
 import { DeadlineBanner } from "@/components/shared/DeadlineBanner"
 
@@ -32,7 +33,8 @@ function computeNextDeadline(
     if (gMatches.length === 0) continue
 
     for (const round of [1, 2, 3] as const) {
-      // Lock rule: rounds 2 and 3 lock together (before round 2's first match)
+      // Lock rule: rounds 2 and 3 lock together (before round 2's first match).
+      // All rounds are open from day 1 — no "wait for previous round" gate.
       const lockRound: 1 | 2 | 3 = round >= 2 ? 2 : 1
       const lockRoundMatches = gMatches.filter(m => getGroupRound(m.match_number) === lockRound)
       if (lockRoundMatches.length === 0) continue
@@ -40,27 +42,9 @@ function computeNextDeadline(
       const lockTime = new Date(firstLockMatchAt).getTime() - CUTOFF_MINUTES * 60 * 1000
 
       if (now < lockTime) {
-        // This round is still open — check if it's actually accessible (prev round started)
-        if (round === 1) {
-          // Always accessible before lockTime
-          if (earliestGroupDeadline === null || lockTime < earliestGroupDeadline) {
-            earliestGroupDeadline = lockTime
-            groupDeadlineLabel = round === 1
-              ? "Rodada 1 da Fase de Grupos"
-              : "Rodadas 2 e 3 da Fase de Grupos"
-          }
-        } else {
-          // Round 2/3: opens when round 1 is done
-          const r1Matches = gMatches.filter(m => getGroupRound(m.match_number) === 1)
-          const r1LastAt = r1Matches.length > 0
-            ? r1Matches.reduce((max, m) => new Date(m.scheduled_at) > new Date(max) ? m.scheduled_at : max, r1Matches[0].scheduled_at)
-            : null
-          if (r1LastAt && now >= new Date(r1LastAt).getTime()) {
-            if (earliestGroupDeadline === null || lockTime < earliestGroupDeadline) {
-              earliestGroupDeadline = lockTime
-              groupDeadlineLabel = "Rodadas 2 e 3 da Fase de Grupos"
-            }
-          }
+        if (earliestGroupDeadline === null || lockTime < earliestGroupDeadline) {
+          earliestGroupDeadline = lockTime
+          groupDeadlineLabel = round === 1 ? "Rodada 1 da Fase de Grupos" : "Rodadas 2 e 3 da Fase de Grupos"
         }
         break // Only care about the earliest open round per group
       }
@@ -111,7 +95,7 @@ async function getParticipantData(token: string) {
     supabase.from("group_predictions").select("id", { count: "exact", head: true }).eq("participant_id", participant.id),
     supabase.from("knockout_predictions").select("id", { count: "exact", head: true }).eq("participant_id", participant.id),
     supabase.from("ranking_snapshots").select("total_points, rank_position, exact_scores, correct_results").eq("participant_id", participant.id).order("snapshot_date", { ascending: false }).limit(1).single(),
-    supabase.from("matches").select("id, stage, group_letter, scheduled_at, home_score, away_score, status, home_team:teams!matches_home_team_id_fkey(fifa_code, name), away_team:teams!matches_away_team_id_fkey(fifa_code, name)").in("status", ["SCHEDULED", "LIVE"]).order("scheduled_at", { ascending: true }).limit(3),
+    supabase.from("matches").select("id, stage, group_letter, scheduled_at, home_score, away_score, status, home_team:teams!matches_home_team_id_fkey(fifa_code, name, flag_url), away_team:teams!matches_away_team_id_fkey(fifa_code, name, flag_url)").in("status", ["SCHEDULED", "LIVE"]).order("scheduled_at", { ascending: true }).limit(3),
     supabase.from("match_scores").select("total_points, match_id, matches(stage, home_team:teams!matches_home_team_id_fkey(fifa_code), away_team:teams!matches_away_team_id_fkey(fifa_code), home_score, away_score)").eq("participant_id", participant.id).order("calculated_at", { ascending: false }).limit(5),
     supabase.from("matches").select("match_number, scheduled_at, group_letter, status").eq("stage", "GROUP").order("scheduled_at", { ascending: true }),
     supabase.from("matches").select("stage, scheduled_at, status").not("stage", "eq", "GROUP").in("status", ["SCHEDULED"]).order("scheduled_at", { ascending: true }).limit(1),
@@ -205,16 +189,33 @@ export default async function ParticipantPage({ params }: { params: Promise<{ to
                 <Clock className="w-4 h-4" /> Próximos Jogos
               </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-1 pt-0">
+            <CardContent className="pt-0 divide-y">
               {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-              {nextMatches?.map((m: any) => (
-                <div key={m.id} className="flex items-center justify-between text-sm py-2 border-b last:border-0">
-                  <span className="font-medium">{m.home_team?.fifa_code} × {m.away_team?.fifa_code}</span>
-                  {m.status === "LIVE"
-                    ? <Badge variant="live">AO VIVO {m.home_score}×{m.away_score}</Badge>
-                    : <span className="text-xs text-muted-foreground">{formatDate(m.scheduled_at)}</span>}
-                </div>
-              ))}
+              {nextMatches?.map((m: any) => {
+                const weekday = new Intl.DateTimeFormat("pt-BR", { weekday: "long", timeZone: "America/Sao_Paulo" }).format(new Date(m.scheduled_at))
+                const datetime = formatDate(m.scheduled_at)
+                return (
+                  <div key={m.id} className="py-2.5">
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className="text-xs text-muted-foreground capitalize">{weekday} · {datetime}</span>
+                      {m.status === "LIVE" && <Badge variant="live">AO VIVO</Badge>}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="flex flex-1 items-center gap-1.5 min-w-0">
+                        <TeamFlag flagUrl={m.home_team?.flag_url} name={m.home_team?.name ?? "?"} size="sm" />
+                        <span className="text-sm font-medium truncate">{m.home_team?.name ?? m.home_team?.fifa_code ?? "?"}</span>
+                      </div>
+                      <span className="text-xs font-bold text-muted-foreground shrink-0 px-1">
+                        {m.status === "LIVE" ? `${m.home_score} × ${m.away_score}` : "×"}
+                      </span>
+                      <div className="flex flex-1 items-center justify-end gap-1.5 min-w-0">
+                        <span className="text-sm font-medium truncate text-right">{m.away_team?.name ?? m.away_team?.fifa_code ?? "?"}</span>
+                        <TeamFlag flagUrl={m.away_team?.flag_url} name={m.away_team?.name ?? "?"} size="sm" />
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
             </CardContent>
           </Card>
         )}

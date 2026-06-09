@@ -1,7 +1,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { ArrowLeft, Trophy, Target, Info, DollarSign } from "lucide-react"
+import { ArrowLeft, Trophy, Target, Info, DollarSign, Scale } from "lucide-react"
 import Link from "next/link"
 import { STAGE_LABELS } from "@/types/domain"
 
@@ -188,21 +188,21 @@ export default async function RulesPage({ params }: Props) {
               <div className="w-2 h-2 rounded-full bg-green-500 mt-1.5 shrink-0" />
               <div>
                 <div className="font-medium">Rodada 1 da Fase de Grupos</div>
-                <div className="text-xs text-muted-foreground">Aberta agora · Fecha 15 min antes do 1° jogo (11/06 às 16h)</div>
+                <div className="text-xs text-muted-foreground">Aberta desde o início · Fecha 15 min antes do 1° jogo (11/06 às 16h)</div>
               </div>
             </div>
             <div className="flex items-start gap-3 py-1.5 border-b">
               <div className="w-2 h-2 rounded-full bg-green-400 mt-1.5 shrink-0" />
               <div>
                 <div className="font-medium">Rodada 2 da Fase de Grupos</div>
-                <div className="text-xs text-muted-foreground">Abre quando todos os jogos da Rodada 1 começarem · Fecha 15 min antes do 1° jogo da Rodada 2</div>
+                <div className="text-xs text-muted-foreground">Aberta desde o início · Fecha 15 min antes do 1° jogo da Rodada 2</div>
               </div>
             </div>
             <div className="flex items-start gap-3 py-1.5 border-b">
               <div className="w-2 h-2 rounded-full bg-green-300 mt-1.5 shrink-0" />
               <div>
                 <div className="font-medium">Rodada 3 da Fase de Grupos</div>
-                <div className="text-xs text-muted-foreground">Abre quando todos os jogos da Rodada 2 começarem · Fecha 15 min antes do 1° jogo da Rodada 3</div>
+                <div className="text-xs text-muted-foreground">Aberta desde o início · <strong>Fecha junto com a Rodada 2</strong> (15 min antes do 1° jogo da Rodada 2)</div>
               </div>
             </div>
             <div className="flex items-start gap-3 py-1.5 border-b">
@@ -217,6 +217,35 @@ export default async function RulesPage({ params }: Props) {
               <div>
                 <div className="font-medium">Oitavas → Final</div>
                 <div className="text-xs text-muted-foreground">Cada fase abre após a anterior encerrar · Fecha 15 min antes do 1° jogo da fase</div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Critério de Desempate */}
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm flex items-center gap-2">
+              <Scale className="w-4 h-4 text-blue-500" />
+              Critério de Desempate
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="pt-0 space-y-2 text-sm">
+            <p className="text-xs text-muted-foreground pb-1">
+              Em caso de empate na pontuação total, os participantes são separados na seguinte ordem:
+            </p>
+            <div className="flex items-start gap-3 py-2 border-b">
+              <span className="bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 font-bold text-xs rounded-full w-6 h-6 flex items-center justify-center shrink-0 mt-0.5">1</span>
+              <div>
+                <div className="font-medium">Maior número de placares exatos</div>
+                <div className="text-xs text-muted-foreground">Quem acertou mais vezes o placar certinho (ex: 2×1) leva a melhor.</div>
+              </div>
+            </div>
+            <div className="flex items-start gap-3 py-2">
+              <span className="bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 font-bold text-xs rounded-full w-6 h-6 flex items-center justify-center shrink-0 mt-0.5">2</span>
+              <div>
+                <div className="font-medium">Maior pontuação no mata-mata</div>
+                <div className="text-xs text-muted-foreground">Somam-se apenas os pontos obtidos a partir dos 16 avos de final em diante.</div>
               </div>
             </div>
           </CardContent>

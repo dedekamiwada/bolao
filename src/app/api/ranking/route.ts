@@ -5,11 +5,17 @@ export async function GET() {
   const supabase = await createClient()
 
   // Get today's ranking from snapshots
-  const { data: snapshots } = await supabase
-    .from("ranking_snapshots")
-    .select("participant_id, total_points, exact_scores, correct_results, rank_position, snapshot_date")
-    .order("snapshot_date", { ascending: false })
-    .limit(200) // At most 50 participants × buffer
+  const [{ data: snapshots }, { data: knockoutRows }] = await Promise.all([
+    supabase
+      .from("ranking_snapshots")
+      .select("participant_id, total_points, exact_scores, correct_results, rank_position, snapshot_date")
+      .order("snapshot_date", { ascending: false })
+      .limit(200),
+    supabase
+      .from("match_scores")
+      .select("participant_id, total_points, matches!inner(stage)")
+      .neq("matches.stage", "GROUP"),
+  ])
 
   if (!snapshots) return NextResponse.json({ ranking: [] })
 
@@ -21,16 +27,22 @@ export async function GET() {
     }
   }
 
-  // Get participant names (via admin client — no public access to participants table)
-  // We use the public match_scores aggregation instead to avoid exposing participants
-  // Names are fetched via a join using service role in the admin endpoint
-  // For the public ranking, we expose only what's needed
+  // Aggregate knockout points per participant (tiebreaker #2)
+  const knockoutByPid = new Map<string, number>()
+  for (const row of (knockoutRows ?? []) as { participant_id: string; total_points: number }[]) {
+    knockoutByPid.set(row.participant_id, (knockoutByPid.get(row.participant_id) ?? 0) + row.total_points)
+  }
 
   const ranking = [...latestByParticipant.values()]
-    .sort((a, b) => b.total_points - a.total_points || b.exact_scores - a.exact_scores)
+    .sort((a, b) =>
+      b.total_points - a.total_points ||
+      b.exact_scores - a.exact_scores ||
+      (knockoutByPid.get(b.participant_id) ?? 0) - (knockoutByPid.get(a.participant_id) ?? 0)
+    )
     .map((s, idx) => ({
       ...s,
       rank_position: idx + 1,
+      knockout_points: knockoutByPid.get(s.participant_id) ?? 0,
     }))
 
   return NextResponse.json({ ranking }, {

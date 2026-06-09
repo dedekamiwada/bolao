@@ -7,6 +7,10 @@ const geist = Geist({ subsets: ["latin"] })
 export const metadata: Metadata = {
   title: "Bolão Copa 2026",
   description: "Bolão privado da Copa do Mundo FIFA 2026",
+  icons: {
+    icon: "/icon.png",
+    apple: "/icon.png",
+  },
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
