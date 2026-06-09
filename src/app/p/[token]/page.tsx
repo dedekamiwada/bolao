@@ -7,6 +7,85 @@ import { Button } from "@/components/ui/button"
 import { Trophy, ClipboardList, TrendingUp, Clock, BookOpen } from "lucide-react"
 import Link from "next/link"
 import { formatDate } from "@/lib/utils"
+import { getGroupRound, getRoundFirstMatchAt } from "@/lib/group-rounds"
+import { DeadlineBanner } from "@/components/shared/DeadlineBanner"
+
+const CUTOFF_MINUTES = 15
+
+interface GroupMatchRow { match_number: number; scheduled_at: string; group_letter: string | null; status: string }
+interface KnockoutMatchRow { stage: string; scheduled_at: string; status: string }
+
+function computeNextDeadline(
+  groupMatches: GroupMatchRow[],
+  upcomingKnockout: KnockoutMatchRow[]
+): { deadlineAt: string; label: string } | null {
+  const now = Date.now()
+
+  // --- Group stage ---
+  // Work per group to determine which rounds are still open
+  const groups = [...new Set(groupMatches.map(m => m.group_letter).filter(Boolean))] as string[]
+  let earliestGroupDeadline: number | null = null
+  let groupDeadlineLabel = ""
+
+  for (const g of groups) {
+    const gMatches = groupMatches.filter(m => m.group_letter === g)
+    if (gMatches.length === 0) continue
+
+    for (const round of [1, 2, 3] as const) {
+      // Lock rule: rounds 2 and 3 lock together (before round 2's first match)
+      const lockRound: 1 | 2 | 3 = round >= 2 ? 2 : 1
+      const lockRoundMatches = gMatches.filter(m => getGroupRound(m.match_number) === lockRound)
+      if (lockRoundMatches.length === 0) continue
+      const firstLockMatchAt = getRoundFirstMatchAt(lockRoundMatches, lockRound)
+      const lockTime = new Date(firstLockMatchAt).getTime() - CUTOFF_MINUTES * 60 * 1000
+
+      if (now < lockTime) {
+        // This round is still open — check if it's actually accessible (prev round started)
+        if (round === 1) {
+          // Always accessible before lockTime
+          if (earliestGroupDeadline === null || lockTime < earliestGroupDeadline) {
+            earliestGroupDeadline = lockTime
+            groupDeadlineLabel = round === 1
+              ? "Rodada 1 da Fase de Grupos"
+              : "Rodadas 2 e 3 da Fase de Grupos"
+          }
+        } else {
+          // Round 2/3: opens when round 1 is done
+          const r1Matches = gMatches.filter(m => getGroupRound(m.match_number) === 1)
+          const r1LastAt = r1Matches.length > 0
+            ? r1Matches.reduce((max, m) => new Date(m.scheduled_at) > new Date(max) ? m.scheduled_at : max, r1Matches[0].scheduled_at)
+            : null
+          if (r1LastAt && now >= new Date(r1LastAt).getTime()) {
+            if (earliestGroupDeadline === null || lockTime < earliestGroupDeadline) {
+              earliestGroupDeadline = lockTime
+              groupDeadlineLabel = "Rodadas 2 e 3 da Fase de Grupos"
+            }
+          }
+        }
+        break // Only care about the earliest open round per group
+      }
+    }
+  }
+
+  if (earliestGroupDeadline !== null && earliestGroupDeadline > now) {
+    return { deadlineAt: new Date(earliestGroupDeadline).toISOString(), label: groupDeadlineLabel }
+  }
+
+  // --- Knockout stage ---
+  if (upcomingKnockout.length > 0) {
+    const next = upcomingKnockout[0]
+    const lockTime = new Date(next.scheduled_at).getTime() - CUTOFF_MINUTES * 60 * 1000
+    if (lockTime > now) {
+      const stageLabels: Record<string, string> = {
+        R32: "16 avos de Final", R16: "Oitavas de Final",
+        QF: "Quartas de Final", SF: "Semifinais", "3RD": "3º Lugar", FINAL: "Final"
+      }
+      return { deadlineAt: new Date(lockTime).toISOString(), label: stageLabels[next.stage] ?? next.stage }
+    }
+  }
+
+  return null
+}
 
 async function getParticipantData(token: string) {
   const supabase = createAdminClient()
@@ -26,15 +105,22 @@ async function getParticipantData(token: string) {
     { data: snapshot },
     { data: nextMatches },
     { data: myScores },
+    { data: allGroupMatches },
+    { data: upcomingKnockout },
   ] = await Promise.all([
     supabase.from("group_predictions").select("id", { count: "exact", head: true }).eq("participant_id", participant.id),
     supabase.from("knockout_predictions").select("id", { count: "exact", head: true }).eq("participant_id", participant.id),
     supabase.from("ranking_snapshots").select("total_points, rank_position, exact_scores, correct_results").eq("participant_id", participant.id).order("snapshot_date", { ascending: false }).limit(1).single(),
     supabase.from("matches").select("id, stage, group_letter, scheduled_at, home_score, away_score, status, home_team:teams!matches_home_team_id_fkey(fifa_code, name), away_team:teams!matches_away_team_id_fkey(fifa_code, name)").in("status", ["SCHEDULED", "LIVE"]).order("scheduled_at", { ascending: true }).limit(3),
     supabase.from("match_scores").select("total_points, match_id, matches(stage, home_team:teams!matches_home_team_id_fkey(fifa_code), away_team:teams!matches_away_team_id_fkey(fifa_code), home_score, away_score)").eq("participant_id", participant.id).order("calculated_at", { ascending: false }).limit(5),
+    supabase.from("matches").select("match_number, scheduled_at, group_letter, status").eq("stage", "GROUP").order("scheduled_at", { ascending: true }),
+    supabase.from("matches").select("stage, scheduled_at, status").not("stage", "eq", "GROUP").in("status", ["SCHEDULED"]).order("scheduled_at", { ascending: true }).limit(1),
   ])
 
-  return { participant, groupCount, knockoutCount, snapshot, nextMatches, myScores }
+  // Compute next betting deadline
+  const nextDeadline = computeNextDeadline(allGroupMatches ?? [], upcomingKnockout ?? [])
+
+  return { participant, groupCount, knockoutCount, snapshot, nextMatches, myScores, nextDeadline }
 }
 
 export default async function ParticipantPage({ params }: { params: Promise<{ token: string }> }) {
@@ -42,7 +128,7 @@ export default async function ParticipantPage({ params }: { params: Promise<{ to
   const data = await getParticipantData(token)
   if (!data) notFound()
 
-  const { participant, groupCount, knockoutCount, snapshot, nextMatches, myScores } = data
+  const { participant, groupCount, knockoutCount, snapshot, nextMatches, myScores, nextDeadline } = data
   const totalPoints = snapshot?.total_points ?? 0
   const rankPosition = snapshot?.rank_position ?? null
   const exactScores = snapshot?.exact_scores ?? 0
@@ -73,6 +159,11 @@ export default async function ParticipantPage({ params }: { params: Promise<{ to
       </div>
 
       <div className="max-w-2xl mx-auto px-4 -mt-4 space-y-4 pb-8">
+        {/* Aviso de prazo */}
+        {nextDeadline && (
+          <DeadlineBanner deadlineAt={nextDeadline.deadlineAt} label={nextDeadline.label} />
+        )}
+
         {/* Ações principais */}
         <Card>
           <CardHeader className="pb-3">

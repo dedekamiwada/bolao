@@ -1,9 +1,10 @@
 import { createClient } from "@/lib/supabase/server"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
-import { Trophy, Target, Zap } from "lucide-react"
-import { formatDate } from "@/lib/utils"
+import { Button } from "@/components/ui/button"
+import { Trophy, Target, Zap, BookOpen } from "lucide-react"
+import Link from "next/link"
 import { TokenAccess } from "@/components/shared/TokenAccess"
+import { MatchesWithPredictions } from "@/components/shared/MatchPredictionsModal"
 
 export const revalidate = 30
 
@@ -31,12 +32,17 @@ async function getNextMatches() {
   const { data } = await supabase
     .from("matches")
     .select(`id, stage, group_letter, scheduled_at, status, home_score, away_score,
-      home_team:teams!matches_home_team_id_fkey(fifa_code, name),
-      away_team:teams!matches_away_team_id_fkey(fifa_code, name)`)
-    .in("status", ["SCHEDULED", "LIVE"])
-    .order("scheduled_at", { ascending: true })
-    .limit(5)
-  return data ?? []
+      home_team:teams!matches_home_team_id_fkey(id, fifa_code, name),
+      away_team:teams!matches_away_team_id_fkey(id, fifa_code, name)`)
+    .in("status", ["SCHEDULED", "LIVE", "FINISHED"])
+    .order("scheduled_at", { ascending: false })
+    .limit(8)
+  // Show upcoming first, then recent finished
+  const all = data ?? []
+  const live = all.filter(m => m.status === "LIVE")
+  const scheduled = all.filter(m => m.status === "SCHEDULED").reverse()
+  const finished = all.filter(m => m.status === "FINISHED")
+  return [...live, ...scheduled, ...finished].slice(0, 8)
 }
 
 export default async function HomePage() {
@@ -49,38 +55,29 @@ export default async function HomePage() {
         <div className="text-4xl mb-2">⚽</div>
         <h1 className="text-2xl font-bold tracking-tight">Bolão Copa 2026</h1>
         <p className="text-green-300 text-sm mt-1">FIFA World Cup • Canadá, México &amp; EUA</p>
+        <div className="mt-4">
+          <Button asChild size="sm" className="bg-yellow-400 hover:bg-yellow-300 text-green-950 font-bold px-5">
+            <Link href="/rules">
+              <BookOpen className="w-4 h-4 mr-2" />
+              Ver Regras &amp; Premiação
+            </Link>
+          </Button>
+        </div>
       </div>
 
       <div className="max-w-2xl mx-auto px-4 py-6 space-y-6">
-        {/* Próximos jogos */}
+        {/* Próximos jogos — clique para ver palpites */}
         {nextMatches.length > 0 && (
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="text-base flex items-center gap-2">
                 <Zap className="w-4 h-4 text-yellow-500" />
-                Próximos Jogos
+                Jogos
+                <span className="text-xs text-muted-foreground font-normal ml-1">• clique para ver palpites</span>
               </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-1 pt-0">
-              {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-              {nextMatches.map((m: any) => (
-                <div key={m.id} className="flex items-center justify-between text-sm py-2 border-b last:border-0">
-                  <div className="flex items-center gap-2 flex-1">
-                    <span className="font-medium">{m.home_team?.fifa_code ?? "?"}</span>
-                    {m.status === "LIVE" ? (
-                      <Badge variant="live">{m.home_score ?? 0} × {m.away_score ?? 0}</Badge>
-                    ) : (
-                      <span className="text-muted-foreground">×</span>
-                    )}
-                    <span className="font-medium">{m.away_team?.fifa_code ?? "?"}</span>
-                  </div>
-                  <div className="shrink-0">
-                    {m.status === "LIVE"
-                      ? <Badge variant="live">AO VIVO</Badge>
-                      : <span className="text-xs text-muted-foreground">{formatDate(m.scheduled_at)}</span>}
-                  </div>
-                </div>
-              ))}
+            <CardContent className="pt-0">
+              <MatchesWithPredictions matches={nextMatches} />
             </CardContent>
           </Card>
         )}
