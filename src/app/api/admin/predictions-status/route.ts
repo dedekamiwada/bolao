@@ -44,32 +44,31 @@ export async function GET() {
   const r1LockTime = r1Matches.length ? firstMatchAt(r1Matches)! - CUTOFF_MS : null
   const r2LockTime = r2Matches.length ? firstMatchAt(r2Matches)! - CUTOFF_MS : null
 
-  // Which rounds are still open?
-  const r1Open = r1LockTime !== null && now < r1LockTime
-  const r23Open = r2LockTime !== null && now < r2LockTime
+  // Windows are MUTUALLY EXCLUSIVE — show the nearest upcoming deadline only.
+  // • r1 window:  open while now < r1LockTime
+  // • r23 window: open while r1 already locked (now >= r1LockTime) AND now < r2LockTime
+  // • knockout:   all group windows closed
+  const r1Active  = r1LockTime  !== null && now < r1LockTime
+  const r23Active = r2LockTime  !== null && !r1Active && now < r2LockTime
 
-  // Expected match IDs per round window
   const openMatchIds = new Set<number>()
-  if (r1Open) r1Matches.forEach(m => openMatchIds.add(m.id))
-  if (r23Open) {
-    r2Matches.forEach(m => openMatchIds.add(m.id))
-    r3Matches.forEach(m => openMatchIds.add(m.id))
-  }
-
-  // Determine label for the next closing window
   let windowLabel = ""
   let windowDeadline: string | null = null
-  if (r1Open && r1LockTime) {
-    windowLabel = "Rodada 1 da Fase de Grupos"
+
+  if (r1Active && r1LockTime) {
+    r1Matches.forEach(m => openMatchIds.add(m.id))
+    windowLabel = "Rodada 1 — Fase de Grupos"
     windowDeadline = new Date(r1LockTime).toISOString()
-  } else if (r23Open && r2LockTime) {
-    windowLabel = "Rodadas 2 e 3 da Fase de Grupos"
+  } else if (r23Active && r2LockTime) {
+    r2Matches.forEach(m => openMatchIds.add(m.id))
+    r3Matches.forEach(m => openMatchIds.add(m.id))
+    windowLabel = "Rodadas 2 e 3 — Fase de Grupos"
     windowDeadline = new Date(r2LockTime).toISOString()
   } else if (knockoutMatches && knockoutMatches.length > 0) {
     const ko = knockoutMatches[0]
     const koLock = new Date(ko.scheduled_at).getTime() - CUTOFF_MS
     if (now < koLock) {
-      const labels: Record<string, string> = { R32: "16 avos", R16: "Oitavas", QF: "Quartas", SF: "Semifinais", "3RD": "3º Lugar", FINAL: "Final" }
+      const labels: Record<string, string> = { R32: "16 avos de Final", R16: "Oitavas de Final", QF: "Quartas de Final", SF: "Semifinais", "3RD": "3º Lugar", FINAL: "Final" }
       windowLabel = labels[ko.stage] ?? ko.stage
       windowDeadline = new Date(koLock).toISOString()
     }
@@ -77,16 +76,15 @@ export async function GET() {
 
   const totalExpected = openMatchIds.size
 
-  // Build prediction lookup: participant_id → Set of match_ids
+  // Build prediction lookup: participant_id → Set of match_ids in the current window
   const predMap = new Map<string, Set<number>>()
   for (const p of participants) predMap.set(p.id, new Set())
+
   for (const gp of groupPreds ?? []) {
-    if (openMatchIds.has(gp.match_id)) {
-      predMap.get(gp.participant_id)?.add(gp.match_id)
-    }
+    if (openMatchIds.has(gp.match_id)) predMap.get(gp.participant_id)?.add(gp.match_id)
   }
-  // For knockout window, count knockout preds too
-  if (!r1Open && !r23Open && knockoutMatches?.length) {
+  // Knockout window: count knockout predictions
+  if (!r1Active && !r23Active && knockoutMatches?.length) {
     for (const kp of knockoutPreds ?? []) {
       predMap.get(kp.participant_id)?.add(kp.match_id)
     }

@@ -246,18 +246,16 @@ export function GroupMatchCard({
         </div>
       )}
 
-      {/* Botão ver palpites — sempre visível após rodada fechada */}
-      {locked && !isNotYetOpen && (
-        <div className="mt-2 border-t pt-2">
-          <button
-            onClick={onViewPredictions}
-            className="w-full flex items-center justify-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors py-0.5"
-          >
-            <Users className="w-3 h-3" />
-            Ver palpites de todos
-          </button>
-        </div>
-      )}
+      {/* Botão ver palpites — sempre visível */}
+      <div className="mt-2 border-t pt-2">
+        <button
+          onClick={onViewPredictions}
+          className="w-full flex items-center justify-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors py-0.5"
+        >
+          <Users className="w-3 h-3" />
+          {locked ? "Ver palpites de todos" : "Ver palpites (fecham antes do jogo)"}
+        </button>
+      </div>
     </div>
   )
 }

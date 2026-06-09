@@ -129,18 +129,19 @@ export function MatchPredictionsModal({ match, isLocked, isFinished, onClose }: 
           </button>
         </div>
 
+        {/* Banner antes do fechamento */}
+        {!showPredictions && (
+          <div className="flex items-center gap-2 bg-amber-50 dark:bg-amber-950/30 border-b border-amber-200 dark:border-amber-800 px-4 py-2 shrink-0">
+            <Lock className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+            <span className="text-xs text-amber-700 dark:text-amber-400">
+              Palpites revelados após o fechamento da rodada
+            </span>
+          </div>
+        )}
+
         {/* Body */}
         <div className="overflow-y-auto flex-1 px-4 py-3">
-          {!showPredictions ? (
-            /* Palpites ainda abertos — não revelar */
-            <div className="flex flex-col items-center justify-center py-12 gap-3 text-center">
-              <Lock className="w-10 h-10 text-muted-foreground/40" />
-              <p className="text-sm font-medium text-muted-foreground">Palpites ainda abertos</p>
-              <p className="text-xs text-muted-foreground max-w-xs">
-                Os palpites dos participantes serão revelados após o fechamento desta rodada.
-              </p>
-            </div>
-          ) : loading ? (
+          {loading ? (
             <div className="flex justify-center py-10">
               <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
             </div>
@@ -150,7 +151,7 @@ export function MatchPredictionsModal({ match, isLocked, isFinished, onClose }: 
             </p>
           ) : (
             <>
-              {/* Legend */}
+              {/* Legend — só após jogo finalizado */}
               {matchFinished && (
                 <div className="flex flex-wrap gap-2 mb-3 pb-3 border-b">
                   <span className="text-[10px] bg-green-100 text-green-700 dark:bg-green-950/40 dark:text-green-400 px-2 py-0.5 rounded-full font-medium">★ Placar exato</span>
@@ -161,7 +162,7 @@ export function MatchPredictionsModal({ match, isLocked, isFinished, onClose }: 
               )}
 
               {/* Ranking list */}
-              <div className="space-y-1.5">
+              <div className="space-y-1.5 relative">
                 {entries.map((e, idx) => (
                   <div
                     key={e.participant_id}
@@ -174,11 +175,11 @@ export function MatchPredictionsModal({ match, isLocked, isFinished, onClose }: 
                         : <span className="text-xs">{idx + 1}</span>}
                     </span>
 
-                    {/* Name */}
+                    {/* Name — sempre visível */}
                     <span className="flex-1 text-sm font-medium truncate">{e.name}</span>
 
-                    {/* Prediction */}
-                    <span className="font-mono text-sm font-bold shrink-0">
+                    {/* Prediction — borrada antes de fechar */}
+                    <span className={`font-mono text-sm font-bold shrink-0 transition-all ${!showPredictions ? "blur-sm select-none pointer-events-none" : ""}`}>
                       {e.home_score} × {e.away_score}
                     </span>
 
@@ -188,6 +189,16 @@ export function MatchPredictionsModal({ match, isLocked, isFinished, onClose }: 
                       : <span className="text-xs text-muted-foreground w-16 text-right shrink-0">—</span>}
                   </div>
                 ))}
+
+                {/* Overlay com cadeado sobre a lista quando ainda aberta */}
+                {!showPredictions && (
+                  <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 rounded-lg bg-background/60 backdrop-blur-[2px]">
+                    <Lock className="w-8 h-8 text-muted-foreground/60" />
+                    <p className="text-xs text-muted-foreground font-medium text-center px-4">
+                      Palpites revelados após fechar a rodada
+                    </p>
+                  </div>
+                )}
               </div>
             </>
           )}
