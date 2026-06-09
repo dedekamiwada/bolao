@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
-import { Users, RefreshCw, Copy, Check, LogOut, Loader2, Plus, Trash2, Calculator, Link2, RotateCcw } from "lucide-react"
+import { Users, RefreshCw, Copy, Check, LogOut, Loader2, Plus, Trash2, Calculator, RotateCcw, AlertCircle, CheckCircle2 } from "lucide-react"
 
 interface Participant {
   id: string
@@ -30,7 +30,18 @@ export default function AdminDashboard() {
   const [loading, setLoading] = useState(true)
   const [actionId, setActionId] = useState<string | null>(null)
 
-  useEffect(() => { loadParticipants() }, [])
+  interface PredStatus { id: string; name: string; done: number; total: number; complete: boolean; missing: number }
+  const [predStatus, setPredStatus] = useState<{ windowLabel: string; windowDeadline: string | null; statuses: PredStatus[] } | null>(null)
+  const [predStatusLoading, setPredStatusLoading] = useState(false)
+
+  useEffect(() => { loadParticipants(); loadPredStatus() }, [])
+
+  async function loadPredStatus() {
+    setPredStatusLoading(true)
+    const res = await fetch("/api/admin/predictions-status")
+    if (res.ok) setPredStatus(await res.json())
+    setPredStatusLoading(false)
+  }
 
   async function loadParticipants() {
     const res = await fetch("/api/admin/participants")
@@ -162,6 +173,65 @@ export default function AdminDashboard() {
             </div>
             {syncMsg && <p className="text-xs text-muted-foreground">{syncMsg}</p>}
             {scoreMsg && <p className="text-xs text-muted-foreground">{scoreMsg}</p>}
+          </CardContent>
+        </Card>
+
+        {/* Palpites incompletos */}
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm flex items-center justify-between gap-2">
+              <span className="flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 text-orange-500" />
+                Palpites Incompletos
+              </span>
+              <button onClick={loadPredStatus} className="text-muted-foreground hover:text-foreground">
+                <RefreshCw className={`w-3.5 h-3.5 ${predStatusLoading ? "animate-spin" : ""}`} />
+              </button>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="pt-0">
+            {predStatusLoading ? (
+              <div className="flex justify-center py-4"><Loader2 className="w-5 h-5 animate-spin text-muted-foreground" /></div>
+            ) : !predStatus || predStatus.statuses.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-4">Nenhuma janela de palpites aberta no momento.</p>
+            ) : (
+              <>
+                <div className="mb-3 px-1">
+                  <p className="text-xs font-medium text-muted-foreground">
+                    Próximo fechamento: <span className="text-foreground font-semibold">{predStatus.windowLabel}</span>
+                  </p>
+                  {predStatus.windowDeadline && (
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      Fecha em: {new Date(predStatus.windowDeadline).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })}
+                    </p>
+                  )}
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Total de jogos nessa janela: <strong>{predStatus.statuses[0]?.total ?? 0}</strong>
+                  </p>
+                </div>
+                <div className="divide-y">
+                  {predStatus.statuses.map(p => (
+                    <div key={p.id} className="flex items-center justify-between py-2 gap-2">
+                      <div className="flex items-center gap-2 flex-1 min-w-0">
+                        {p.complete
+                          ? <CheckCircle2 className="w-4 h-4 text-green-500 shrink-0" />
+                          : <AlertCircle className="w-4 h-4 text-orange-400 shrink-0" />}
+                        <span className="text-sm font-medium truncate">{p.name}</span>
+                      </div>
+                      <div className="shrink-0 text-right">
+                        {p.complete ? (
+                          <Badge variant="success" className="text-xs">✓ Completo</Badge>
+                        ) : (
+                          <span className="text-xs text-orange-600 dark:text-orange-400 font-semibold">
+                            {p.done}/{p.total} — faltam {p.missing}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
           </CardContent>
         </Card>
 

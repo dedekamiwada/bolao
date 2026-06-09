@@ -5,7 +5,7 @@ import { TeamFlag } from "@/components/shared/TeamFlag"
 import { MatchStatusBadge } from "@/components/shared/MatchStatusBadge"
 import { cn } from "@/lib/utils"
 import { formatDate } from "@/lib/utils"
-import { Clock, Lock } from "lucide-react"
+import { Clock, Lock, Users } from "lucide-react"
 
 const CUTOFF_MINUTES = 15
 
@@ -74,12 +74,12 @@ function Countdown({ roundFirstMatchAt }: { roundFirstMatchAt: string }) {
   const isUrgent = remaining < 30 * 60 * 1000
 
   const label = d > 0
-    ? `Rodada fecha em ${d}d ${h}h`
+    ? `Fecha em ${d}d ${h}h`
     : h > 0
-    ? `Rodada fecha em ${h}h ${m.toString().padStart(2, "0")}m`
+    ? `Fecha em ${h}h ${m.toString().padStart(2, "0")}m`
     : m > 0
-    ? `Rodada fecha em ${m}m ${s.toString().padStart(2, "0")}s`
-    : `Rodada fecha em ${s}s`
+    ? `Fecha em ${m}m ${s.toString().padStart(2, "0")}s`
+    : `Fecha em ${s}s`
 
   return (
     <span className={cn(
@@ -113,6 +113,7 @@ interface GroupMatchCardProps {
   predictedAwayScore: number | undefined
   isLocked: boolean
   onChange: (matchId: number, home: number, away: number) => void
+  onViewPredictions: () => void
 }
 
 export function GroupMatchCard({
@@ -130,6 +131,7 @@ export function GroupMatchCard({
   predictedAwayScore,
   isLocked: isLockedByDb,
   onChange,
+  onViewPredictions,
 }: GroupMatchCardProps) {
   const [home, setHome] = useState(predictedHomeScore?.toString() ?? "")
   const [away, setAway] = useState(predictedAwayScore?.toString() ?? "")
@@ -162,7 +164,7 @@ export function GroupMatchCard({
   return (
     <div className={cn(
       "rounded-lg border bg-card p-3 transition-all",
-      (locked || isNotYetOpen) && "opacity-70",
+      (locked || isNotYetOpen) && "opacity-80",
       isLive && "border-red-300 bg-red-50/50 dark:bg-red-950/10"
     )}>
       {/* Header: data + countdown/status */}
@@ -241,6 +243,19 @@ export function GroupMatchCard({
       {isFinished && officialHomeScore !== null && officialAwayScore !== null && (
         <div className="mt-2 text-center text-xs text-muted-foreground">
           Resultado oficial: <strong>{officialHomeScore} × {officialAwayScore}</strong>
+        </div>
+      )}
+
+      {/* Botão ver palpites — sempre visível após rodada fechada */}
+      {locked && !isNotYetOpen && (
+        <div className="mt-2 border-t pt-2">
+          <button
+            onClick={onViewPredictions}
+            className="w-full flex items-center justify-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors py-0.5"
+          >
+            <Users className="w-3 h-3" />
+            Ver palpites de todos
+          </button>
         </div>
       )}
     </div>

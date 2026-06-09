@@ -37,6 +37,9 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
       home_score: p.home_score,
       away_score: p.away_score,
       total_points: score?.total_points ?? null,
+      points_exact_score: score?.points_exact_score ?? null,
+      points_result: score?.points_result ?? null,
+      points_goal_diff: score?.points_goal_diff ?? null,
     }
   }).sort((a: { total_points: number | null }, b: { total_points: number | null }) => {
     if (a.total_points === null && b.total_points === null) return 0

@@ -3,11 +3,12 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react"
 import { useParams, useRouter } from "next/navigation"
 import { GroupMatchCard } from "@/components/predict/GroupMatchCard"
+import { MatchPredictionsModal } from "@/components/predict/MatchPredictionsModal"
 import { SimulatedStandings } from "@/components/predict/SimulatedStandings"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { ArrowLeft, Save, Loader2, Calendar, LayoutGrid, Lock, Clock, List } from "lucide-react"
+import { ArrowLeft, Save, Loader2, Calendar, LayoutGrid, Lock, Clock, List, FileDown } from "lucide-react"
 import Link from "next/link"
 import { GROUP_LETTERS } from "@/types/domain"
 import { getGroupRound } from "@/lib/group-rounds"
@@ -134,6 +135,7 @@ export default function PredictPage() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [saveMsg, setSaveMsg] = useState("")
+  const [modalMatch, setModalMatch] = useState<Match | null>(null)
   const [activeGroup, setActiveGroup] = useState("A")
   const [viewMode, setViewMode] = useState<ViewMode>("round")
   const [selectedRound, setSelectedRound] = useState<1 | 2 | 3 | null>(null)
@@ -188,17 +190,21 @@ export default function PredictPage() {
   }, [matches])
 
   // Per-match round info (pointing to the global boundaries)
+  // Lock rule: round 1 locks on its own firstMatchAt; rounds 2+3 lock on round 2's firstMatchAt.
+  // Open rule: all rounds are open from day one — prevRoundLastMatchAt is always null.
   const matchRoundInfo = useMemo(() => {
     const info = new Map<number, RoundInfo>()
+    const r2boundary = globalRoundBoundaries.get(2)
     for (const match of matches) {
       const round = getGroupRound(match.match_number)
       const boundary = globalRoundBoundaries.get(round)
       if (!boundary) continue
-      const prevBoundary = round > 1 ? globalRoundBoundaries.get((round - 1) as 1 | 2 | 3) : undefined
+      // Rounds 2 and 3 use round 2's firstMatchAt as the lock trigger
+      const lockFirstMatchAt = round >= 2 ? (r2boundary?.firstMatchAt ?? boundary.firstMatchAt) : boundary.firstMatchAt
       info.set(match.id, {
         roundNumber: round,
-        roundFirstMatchAt: boundary.firstMatchAt,
-        prevRoundLastMatchAt: prevBoundary?.lastMatchAt ?? null,
+        roundFirstMatchAt: lockFirstMatchAt,
+        prevRoundLastMatchAt: null, // no "waiting for previous round" — all rounds open immediately
       })
     }
     return info
@@ -239,6 +245,74 @@ export default function PredictPage() {
     } else {
       setSaveMsg("Erro ao salvar. Tente novamente.")
     }
+  }
+
+  // ─── Export PDF ────────────────────────────────────────────────────────────
+  function exportPdf() {
+    // Determine current active round label for the filename/title
+    let roundLabel = "Fase de Grupos"
+    if (viewMode === "round" && selectedRound !== null) {
+      roundLabel = selectedRound === 1 ? "Rodada 1 — Fase de Grupos" : "Rodadas 2 e 3 — Fase de Grupos"
+    }
+
+    // Collect matches to export based on view
+    let exportMatches = matches
+    if (viewMode === "round" && selectedRound !== null) {
+      exportMatches = matches.filter(m => getGroupRound(m.match_number) === selectedRound)
+    }
+
+    const rows = exportMatches
+      .filter(m => predictions.has(m.id))
+      .map(m => {
+        const pred = predictions.get(m.id)!
+        return `
+          <tr>
+            <td>${m.home_team?.fifa_code ?? "?"} × ${m.away_team?.fifa_code ?? "?"}</td>
+            <td style="text-align:center">${new Date(m.scheduled_at).toLocaleDateString("pt-BR")}</td>
+            <td style="text-align:center;font-weight:bold">${pred.home} × ${pred.away}</td>
+          </tr>`
+      }).join("")
+
+    const unpredicted = exportMatches.filter(m => !predictions.has(m.id))
+    const unpredRows = unpredicted.map(m => `
+      <tr style="color:#999">
+        <td>${m.home_team?.fifa_code ?? "?"} × ${m.away_team?.fifa_code ?? "?"}</td>
+        <td style="text-align:center">${new Date(m.scheduled_at).toLocaleDateString("pt-BR")}</td>
+        <td style="text-align:center">—</td>
+      </tr>`).join("")
+
+    const html = `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>Palpites — ${roundLabel}</title>
+<style>
+  body { font-family: Arial, sans-serif; padding: 24px; color: #111; }
+  h1 { font-size: 18px; margin-bottom: 4px; }
+  p.sub { color: #666; font-size: 13px; margin-bottom: 20px; }
+  table { width: 100%; border-collapse: collapse; }
+  th { background: #15803d; color: white; padding: 8px 12px; text-align: left; font-size: 13px; }
+  td { padding: 7px 12px; border-bottom: 1px solid #e5e7eb; font-size: 13px; }
+  tr:nth-child(even) td { background: #f9fafb; }
+  @media print { body { padding: 0; } }
+</style>
+</head>
+<body>
+<h1>⚽ Bolão Copa 2026 — Meus Palpites</h1>
+<p class="sub">${roundLabel} &nbsp;·&nbsp; Exportado em ${new Date().toLocaleString("pt-BR")}</p>
+<table>
+  <thead><tr><th>Partida</th><th style="text-align:center">Data</th><th style="text-align:center">Meu Palpite</th></tr></thead>
+  <tbody>${rows}${unpredRows}</tbody>
+</table>
+</body>
+</html>`
+
+    const w = window.open("", "_blank")
+    if (!w) return
+    w.document.write(html)
+    w.document.close()
+    w.focus()
+    setTimeout(() => w.print(), 400)
   }
 
   const groupsWithMatches = GROUP_LETTERS.filter(g => matches.some(m => m.group_letter === g))
@@ -317,6 +391,7 @@ export default function PredictPage() {
         predictedAwayScore={predictions.get(m.id)?.away}
         isLocked={lockedMatches.has(m.id)}
         onChange={handleChange}
+        onViewPredictions={() => setModalMatch(m)}
       />
     )
   }
@@ -376,9 +451,10 @@ export default function PredictPage() {
               {([null, 1, 2, 3] as const).map(r => {
                 const label = r === null ? "Todas" : `Rodada ${r}`
                 const boundary = r !== null ? globalRoundBoundaries.get(r) : undefined
-                const prevBoundary = r !== null && r > 1 ? globalRoundBoundaries.get((r - 1) as 1 | 2 | 3) : undefined
-                const locked = boundary ? isRoundLocked(boundary.firstMatchAt, now) : false
-                const notYetOpen = boundary ? isRoundNotYetOpen(prevBoundary?.lastMatchAt ?? null, now) : false
+                const r2boundary = globalRoundBoundaries.get(2)
+                const lockFirstMatchAt = boundary ? (r !== null && r >= 2 ? (r2boundary?.firstMatchAt ?? boundary.firstMatchAt) : boundary.firstMatchAt) : undefined
+                const locked = lockFirstMatchAt ? isRoundLocked(lockFirstMatchAt, now) : false
+                const notYetOpen = false // all rounds open from day one
                 const isActive = selectedRound === r
                 return (
                   <button
@@ -406,10 +482,11 @@ export default function PredictPage() {
             {([1, 2, 3] as const).filter(r => selectedRound === null || selectedRound === r).map(roundNum => {
               const boundary = globalRoundBoundaries.get(roundNum)
               if (!boundary) return null
-              const prevBoundary = roundNum > 1 ? globalRoundBoundaries.get((roundNum - 1) as 1 | 2 | 3) : undefined
-              const prevLastMatchAt = prevBoundary?.lastMatchAt ?? null
-              const locked = isRoundLocked(boundary.firstMatchAt, now)
-              const notYetOpen = isRoundNotYetOpen(prevLastMatchAt, now)
+              const r2b = globalRoundBoundaries.get(2)
+              const lockFirstMatchAt = roundNum >= 2 ? (r2b?.firstMatchAt ?? boundary.firstMatchAt) : boundary.firstMatchAt
+              const prevLastMatchAt = null // all rounds open from day one
+              const locked = isRoundLocked(lockFirstMatchAt, now)
+              const notYetOpen = false
               const byDate = matchesByRoundAndDate.get(roundNum)!
               const roundPredCount = [...byDate.values()].flat().filter(m => predictions.has(m.id)).length
               const roundTotalCount = [...byDate.values()].flat().length
@@ -511,7 +588,8 @@ export default function PredictPage() {
                         if (roundMatches.length === 0) return null
                         const boundary = globalRoundBoundaries.get(roundNum)
                         if (!boundary) return null
-                        const prevBoundary = roundNum > 1 ? globalRoundBoundaries.get((roundNum - 1) as 1 | 2 | 3) : undefined
+                        const r2b2 = globalRoundBoundaries.get(2)
+                        const lockAt = roundNum >= 2 ? (r2b2?.firstMatchAt ?? boundary.firstMatchAt) : boundary.firstMatchAt
 
                         return (
                           <div key={roundNum} className="space-y-1.5">
@@ -521,8 +599,8 @@ export default function PredictPage() {
                               </span>
                               <RoundStatusBadge
                                 roundNumber={roundNum}
-                                roundFirstMatchAt={boundary.firstMatchAt}
-                                prevRoundLastMatchAt={prevBoundary?.lastMatchAt ?? null}
+                                roundFirstMatchAt={lockAt}
+                                prevRoundLastMatchAt={null}
                                 now={now}
                               />
                             </div>
@@ -704,16 +782,39 @@ export default function PredictPage() {
         )}
       </div>
 
-      {/* Sticky save */}
+      {/* Sticky save + export PDF */}
       <div className="fixed bottom-0 left-0 right-0 bg-background border-t p-4">
-        <div className="max-w-2xl mx-auto flex items-center gap-3">
-          {saveMsg && <span className="text-sm text-green-600 flex-1">{saveMsg}</span>}
-          <Button onClick={handleSave} disabled={saving} className="w-full bg-green-700 hover:bg-green-800 text-white">
-            {saving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Save className="w-4 h-4 mr-2" />}
-            Salvar Palpites
-          </Button>
+        <div className="max-w-2xl mx-auto space-y-2">
+          {saveMsg && <span className="text-sm text-green-600 block text-center">{saveMsg}</span>}
+          <div className="flex gap-2">
+            <Button
+              onClick={exportPdf}
+              variant="outline"
+              className="shrink-0 border-green-700 text-green-700 hover:bg-green-50 dark:hover:bg-green-950/20"
+              title="Exportar PDF dos palpites"
+            >
+              <FileDown className="w-4 h-4" />
+            </Button>
+            <Button onClick={handleSave} disabled={saving} className="flex-1 bg-green-700 hover:bg-green-800 text-white">
+              {saving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Save className="w-4 h-4 mr-2" />}
+              Salvar Palpites
+            </Button>
+          </div>
         </div>
       </div>
+
+      {/* Modal de palpites de todos */}
+      {modalMatch && (
+        <MatchPredictionsModal
+          match={modalMatch}
+          isLocked={(() => {
+            const info = matchRoundInfo.get(modalMatch.id)
+            return info ? isRoundLocked(info.roundFirstMatchAt, Date.now()) : false
+          })()}
+          isFinished={modalMatch.status === "FINISHED"}
+          onClose={() => setModalMatch(null)}
+        />
+      )}
     </main>
   )
 }
