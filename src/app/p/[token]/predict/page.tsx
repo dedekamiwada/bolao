@@ -371,7 +371,7 @@ export default function PredictPage() {
   }).length
 
   // Helper to render a GroupMatchCard given a match
-  function renderCard(m: Match) {
+  function renderCard(m: Match, roundFirstMatchAtOverride?: string) {
     const info = matchRoundInfo.get(m.id)
     if (!info) return null
     return (
@@ -381,7 +381,7 @@ export default function PredictPage() {
         homeTeam={m.home_team}
         awayTeam={m.away_team}
         scheduledAt={m.scheduled_at}
-        roundFirstMatchAt={info.roundFirstMatchAt}
+        roundFirstMatchAt={roundFirstMatchAtOverride ?? info.roundFirstMatchAt}
         prevRoundLastMatchAt={info.prevRoundLastMatchAt}
         roundNumber={info.roundNumber}
         status={m.status}
@@ -540,7 +540,7 @@ export default function PredictPage() {
                                   <span className="text-xs text-green-600 ml-auto">✓</span>
                                 )}
                               </div>
-                              {renderCard(m)}
+                              {renderCard(m, boundary.firstMatchAt)}
                             </div>
                           ))}
                         </div>
