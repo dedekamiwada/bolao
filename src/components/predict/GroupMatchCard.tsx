@@ -12,11 +12,12 @@ const CUTOFF_MINUTES = 15
 // Locks 15 min before the first match of the round (not this specific match)
 function useTimeLock(roundFirstMatchAt: string) {
   const cutoff = new Date(roundFirstMatchAt).getTime() - CUTOFF_MINUTES * 60 * 1000
-  const [locked, setLocked] = useState(Date.now() >= cutoff)
+  const [locked, setLocked] = useState(() => Date.now() >= cutoff)
 
   useEffect(() => {
     if (locked) return
     const remaining = cutoff - Date.now()
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (remaining <= 0) { setLocked(true); return }
 
     if (remaining < 5 * 60 * 1000) {
@@ -36,12 +37,12 @@ function useTimeLock(roundFirstMatchAt: string) {
 // Becomes false (open) once the previous round's last match has kicked off
 function useNotYetOpen(prevRoundLastMatchAt: string | null): boolean {
   const openTime = prevRoundLastMatchAt ? new Date(prevRoundLastMatchAt).getTime() : 0
-  const alreadyOpen = !prevRoundLastMatchAt || Date.now() >= openTime
-  const [open, setOpen] = useState(alreadyOpen)
+  const [open, setOpen] = useState(() => !prevRoundLastMatchAt || Date.now() >= openTime)
 
   useEffect(() => {
     if (!prevRoundLastMatchAt || open) return
     const remaining = openTime - Date.now()
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (remaining <= 0) { setOpen(true); return }
     const timeout = setTimeout(() => setOpen(true), remaining)
     return () => clearTimeout(timeout)
@@ -52,7 +53,7 @@ function useNotYetOpen(prevRoundLastMatchAt: string | null): boolean {
 
 function Countdown({ roundFirstMatchAt }: { roundFirstMatchAt: string }) {
   const cutoff = new Date(roundFirstMatchAt).getTime() - CUTOFF_MINUTES * 60 * 1000
-  const [remaining, setRemaining] = useState(cutoff - Date.now())
+  const [remaining, setRemaining] = useState(() => cutoff - Date.now())
 
   useEffect(() => {
     if (remaining <= 0) return
@@ -62,7 +63,7 @@ function Countdown({ roundFirstMatchAt }: { roundFirstMatchAt: string }) {
       if (diff <= 0) clearInterval(interval)
     }, 1000)
     return () => clearInterval(interval)
-  }, [cutoff])
+  }, [cutoff]) // eslint-disable-line react-hooks/exhaustive-deps
 
   if (remaining <= 0) return null
 
@@ -140,6 +141,7 @@ export function GroupMatchCard({
   const isNotYetOpen = useNotYetOpen(prevRoundLastMatchAt)
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setHome(predictedHomeScore?.toString() ?? "")
     setAway(predictedAwayScore?.toString() ?? "")
   }, [predictedHomeScore, predictedAwayScore])

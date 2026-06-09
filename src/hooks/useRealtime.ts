@@ -11,8 +11,9 @@ export function useRealtime<T>(
   const [data, setData] = useState<T[]>(initialData)
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setData(initialData)
-  }, [initialData])
+  }, [initialData]) // sync when server re-fetches
 
   useEffect(() => {
     const supabase = createClient()

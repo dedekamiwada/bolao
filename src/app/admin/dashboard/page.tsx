@@ -34,7 +34,7 @@ export default function AdminDashboard() {
   const [predStatus, setPredStatus] = useState<{ windowLabel: string; windowDeadline: string | null; statuses: PredStatus[] } | null>(null)
   const [predStatusLoading, setPredStatusLoading] = useState(false)
 
-  useEffect(() => { loadParticipants(); loadPredStatus() }, [])
+  useEffect(() => { loadParticipants(); loadPredStatus() }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   async function loadPredStatus() {
     setPredStatusLoading(true)

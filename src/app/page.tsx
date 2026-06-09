@@ -6,6 +6,7 @@ import { Trophy, Target, Zap, BookOpen } from "lucide-react"
 import Link from "next/link"
 import { formatDate } from "@/lib/utils"
 import { TokenAccess } from "@/components/shared/TokenAccess"
+import { TeamFlag } from "@/components/shared/TeamFlag"
 
 export const revalidate = 30
 
@@ -33,8 +34,8 @@ async function getNextMatches() {
   const { data } = await supabase
     .from("matches")
     .select(`id, stage, group_letter, scheduled_at, status, home_score, away_score,
-      home_team:teams!matches_home_team_id_fkey(fifa_code, name),
-      away_team:teams!matches_away_team_id_fkey(fifa_code, name)`)
+      home_team:teams!matches_home_team_id_fkey(fifa_code, name, flag_url),
+      away_team:teams!matches_away_team_id_fkey(fifa_code, name, flag_url)`)
     .in("status", ["SCHEDULED", "LIVE"])
     .order("scheduled_at", { ascending: true })
     .limit(5)
@@ -71,26 +72,33 @@ export default async function HomePage() {
                 Próximos Jogos
               </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-1 pt-0">
+            <CardContent className="pt-0 divide-y">
               {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-              {nextMatches.map((m: any) => (
-                <div key={m.id} className="flex items-center justify-between text-sm py-2 border-b last:border-0">
-                  <div className="flex items-center gap-2 flex-1">
-                    <span className="font-medium">{m.home_team?.fifa_code ?? "?"}</span>
-                    {m.status === "LIVE" ? (
-                      <Badge variant="live">{m.home_score ?? 0} × {m.away_score ?? 0}</Badge>
-                    ) : (
-                      <span className="text-muted-foreground">×</span>
-                    )}
-                    <span className="font-medium">{m.away_team?.fifa_code ?? "?"}</span>
+              {nextMatches.map((m: any) => {
+                const weekday = new Intl.DateTimeFormat("pt-BR", { weekday: "long", timeZone: "America/Sao_Paulo" }).format(new Date(m.scheduled_at))
+                const datetime = formatDate(m.scheduled_at)
+                return (
+                  <div key={m.id} className="py-2.5">
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className="text-xs text-muted-foreground capitalize">{weekday} · {datetime}</span>
+                      {m.status === "LIVE" && <Badge variant="live">AO VIVO</Badge>}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="flex flex-1 items-center gap-1.5 min-w-0">
+                        <TeamFlag flagUrl={m.home_team?.flag_url} name={m.home_team?.name ?? "?"} size="sm" />
+                        <span className="text-sm font-medium truncate">{m.home_team?.name ?? m.home_team?.fifa_code ?? "?"}</span>
+                      </div>
+                      <span className="text-xs font-bold text-muted-foreground shrink-0 px-1">
+                        {m.status === "LIVE" ? `${m.home_score} × ${m.away_score}` : "×"}
+                      </span>
+                      <div className="flex flex-1 items-center justify-end gap-1.5 min-w-0">
+                        <span className="text-sm font-medium truncate text-right">{m.away_team?.name ?? m.away_team?.fifa_code ?? "?"}</span>
+                        <TeamFlag flagUrl={m.away_team?.flag_url} name={m.away_team?.name ?? "?"} size="sm" />
+                      </div>
+                    </div>
                   </div>
-                  <div className="shrink-0">
-                    {m.status === "LIVE"
-                      ? <Badge variant="live">AO VIVO</Badge>
-                      : <span className="text-xs text-muted-foreground">{formatDate(m.scheduled_at)}</span>}
-                  </div>
-                </div>
-              ))}
+                )
+              })}
             </CardContent>
           </Card>
         )}

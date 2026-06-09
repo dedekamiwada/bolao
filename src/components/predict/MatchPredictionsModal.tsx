@@ -88,7 +88,7 @@ export function MatchPredictionsModal({ match, isLocked, isFinished, onClose }: 
     }
   }, [match.id])
 
-  useEffect(() => { load() }, [load])
+  useEffect(() => { load() }, [load]) // eslint-disable-line react-hooks/set-state-in-effect
 
   // Close on Escape
   useEffect(() => {

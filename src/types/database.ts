@@ -136,8 +136,8 @@ export interface Database {
         Update: Partial<Database["public"]["Tables"]["pool_config"]["Row"]>
       }
     }
-    Views: {}
-    Functions: {}
-    Enums: {}
+    Views: Record<string, never>
+    Functions: Record<string, never>
+    Enums: Record<string, never>
   }
 }

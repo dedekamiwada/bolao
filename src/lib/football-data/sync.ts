@@ -1,6 +1,6 @@
 import { createAdminClient } from "@/lib/supabase/admin"
 import { fetchLiveAndFinishedMatches, fetchAllMatches } from "./client"
-import { FD_STAGE_MAP, FD_STATUS_MAP } from "./types"
+import { FD_STATUS_MAP } from "./types"
 import { recalculateMatchScores } from "@/lib/scoring/calculate"
 
 export async function syncMatches(fullSync = false) {
@@ -38,7 +38,6 @@ export async function syncMatches(fullSync = false) {
   let linked = 0
 
   for (const fdMatch of data.matches) {
-    const stage = FD_STAGE_MAP[fdMatch.stage] ?? fdMatch.stage
     const status = FD_STATUS_MAP[fdMatch.status] ?? "SCHEDULED"
 
     // Scoring rule: use 90min + ET score (ignore penalties)

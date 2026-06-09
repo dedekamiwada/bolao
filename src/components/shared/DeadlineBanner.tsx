@@ -21,7 +21,7 @@ function formatTime(ms: number) {
 
 export function DeadlineBanner({ deadlineAt, label }: Props) {
   const lockTime = new Date(deadlineAt).getTime()
-  const [remaining, setRemaining] = useState(lockTime - Date.now())
+  const [remaining, setRemaining] = useState(() => lockTime - Date.now())
 
   useEffect(() => {
     const interval = setInterval(() => {

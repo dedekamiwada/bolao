@@ -141,7 +141,7 @@ export default function PredictPage() {
   const [selectedRound, setSelectedRound] = useState<1 | 2 | 3 | null>(null)
   const [selectedDate, setSelectedDate] = useState<string | null>(null)
   const [statusFilter, setStatusFilter] = useState<"all" | "upcoming" | "done">("upcoming")
-  const [now, setNow] = useState(Date.now())
+  const [now, setNow] = useState(() => Date.now())
 
   // Tick every 10 s to keep round status fresh
   useEffect(() => {
@@ -509,7 +509,7 @@ export default function PredictPage() {
                       </span>
                       <RoundStatusBadge
                         roundNumber={roundNum}
-                        roundFirstMatchAt={boundary.firstMatchAt}
+                        roundFirstMatchAt={lockFirstMatchAt}
                         prevRoundLastMatchAt={prevLastMatchAt}
                         now={now}
                       />
@@ -540,7 +540,7 @@ export default function PredictPage() {
                                   <span className="text-xs text-green-600 ml-auto">✓</span>
                                 )}
                               </div>
-                              {renderCard(m, boundary.firstMatchAt)}
+                              {renderCard(m, lockFirstMatchAt)}
                             </div>
                           ))}
                         </div>
@@ -809,7 +809,7 @@ export default function PredictPage() {
           match={modalMatch}
           isLocked={(() => {
             const info = matchRoundInfo.get(modalMatch.id)
-            return info ? isRoundLocked(info.roundFirstMatchAt, Date.now()) : false
+            return info ? isRoundLocked(info.roundFirstMatchAt, now) : false
           })()}
           isFinished={modalMatch.status === "FINISHED"}
           onClose={() => setModalMatch(null)}

@@ -21,7 +21,7 @@ function formatTime(ms: number) {
 
 export function CountdownTimer({ targetDate, cutoffMinutes = 15, onExpire }: CountdownTimerProps) {
   const lockTime = new Date(targetDate).getTime() - cutoffMinutes * 60 * 1000
-  const [remaining, setRemaining] = useState(lockTime - Date.now())
+  const [remaining, setRemaining] = useState(() => lockTime - Date.now())
 
   useEffect(() => {
     const interval = setInterval(() => {

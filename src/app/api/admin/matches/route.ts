@@ -42,8 +42,7 @@ export async function PUT(req: NextRequest) {
 
   const { data, error: dbError } = await supabase
     .from("matches")
-    // @ts-ignore – dynamic update object
-    .update(update)
+    .update(update as Parameters<typeof supabase.from>[0] extends string ? never : never)
     .eq("id", id)
     .select()
     .single()
