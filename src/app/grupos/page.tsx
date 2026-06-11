@@ -3,6 +3,7 @@ import { ArrowLeft, Table2 } from "lucide-react"
 import { createClient } from "@/lib/supabase/server"
 import { simulateGroupStandings } from "@/lib/scoring/groupSimulation"
 import { GroupStandingsTable, type StandingRow } from "@/components/shared/GroupStandingsTable"
+import { PanelCarousel } from "@/components/shared/PanelCarousel"
 
 export const revalidate = 60
 
@@ -84,11 +85,13 @@ export default async function GroupsPage() {
                 Nenhum jogo encerrado ainda — as tabelas atualizam automaticamente conforme os resultados saem.
               </p>
             )}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {data.groups.map(g => (
+            <PanelCarousel
+              hint="← deslize para mudar de grupo →"
+              labels={data.groups.map(g => g.letter)}
+              panels={data.groups.map(g => (
                 <GroupStandingsTable key={g.letter} letter={g.letter} standings={g.standings} />
               ))}
-            </div>
+            />
             <p className="text-[11px] text-muted-foreground text-center">
               Critérios: pontos, saldo de gols e gols marcados.
               Os 2 primeiros se classificam; os 8 melhores 3ºs também avançam.

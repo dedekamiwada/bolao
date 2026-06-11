@@ -48,12 +48,17 @@ export function PanelCarousel({ labels, panels, index, onIndexChange, hint }: Pr
       {hint && (
         <p className="text-[11px] text-muted-foreground text-center mb-2 select-none">{hint}</p>
       )}
-      <div className="flex flex-wrap gap-1 mb-4 bg-muted rounded-lg p-1">
+      {/* Grid com uma coluna por chip: todos ficam exatamente do mesmo tamanho
+          (flex com wrap deixava os da última linha mais largos) */}
+      <div
+        className="grid gap-1 mb-4 bg-muted rounded-lg p-1"
+        style={{ gridTemplateColumns: `repeat(${labels.length}, minmax(0, 1fr))` }}
+      >
         {labels.map((label, i) => (
           <button
             key={i}
             onClick={() => goTo(i)}
-            className={`flex-1 min-w-[2rem] rounded-md px-2 py-1 text-xs font-medium transition-colors relative ${
+            className={`rounded-md px-1 py-1 text-xs font-medium transition-colors relative truncate ${
               active === i
                 ? "bg-background shadow text-foreground"
                 : "text-muted-foreground hover:text-foreground"
