@@ -14,14 +14,10 @@ export async function GET() {
     { data: participants },
     { data: groupMatches },
     { data: knockoutMatches },
-    { data: groupPreds },
-    { data: knockoutPreds },
   ] = await Promise.all([
     supabase.from("participants").select("id, name").eq("is_active", true).order("name"),
     supabase.from("matches").select("id, match_number, scheduled_at, group_letter, status").eq("stage", "GROUP").order("scheduled_at"),
     supabase.from("matches").select("id, stage, scheduled_at, status").neq("stage", "GROUP").in("status", ["SCHEDULED"]).order("scheduled_at").limit(1),
-    supabase.from("group_predictions").select("participant_id, match_id"),
-    supabase.from("knockout_predictions").select("participant_id, match_id"),
   ])
 
   if (!participants || !groupMatches) return NextResponse.json({ error: "DB error" }, { status: 500 })
@@ -77,16 +73,30 @@ export async function GET() {
   const totalExpected = openMatchIds.size
 
   // Build prediction lookup: participant_id → Set of match_ids in the current window
+  // Fetch only predictions for the open window's matches (filtering avoids the
+  // default 1000-row PostgREST cap on large prediction tables).
   const predMap = new Map<string, Set<number>>()
   for (const p of participants) predMap.set(p.id, new Set())
 
-  for (const gp of groupPreds ?? []) {
-    if (openMatchIds.has(gp.match_id)) predMap.get(gp.participant_id)?.add(gp.match_id)
-  }
-  // Knockout window: count knockout predictions
-  if (!r1Active && !r23Active && knockoutMatches?.length) {
-    for (const kp of knockoutPreds ?? []) {
-      predMap.get(kp.participant_id)?.add(kp.match_id)
+  const isKnockoutWindow = !r1Active && !r23Active && !!knockoutMatches?.length
+
+  if (openMatchIds.size > 0) {
+    if (isKnockoutWindow) {
+      const { data: knockoutPreds } = await supabase
+        .from("knockout_predictions")
+        .select("participant_id, match_id")
+        .in("match_id", Array.from(openMatchIds))
+      for (const kp of knockoutPreds ?? []) {
+        predMap.get(kp.participant_id)?.add(kp.match_id)
+      }
+    } else {
+      const { data: groupPreds } = await supabase
+        .from("group_predictions")
+        .select("participant_id, match_id")
+        .in("match_id", Array.from(openMatchIds))
+      for (const gp of groupPreds ?? []) {
+        predMap.get(gp.participant_id)?.add(gp.match_id)
+      }
     }
   }
 
