@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Users, RefreshCw, Copy, Check, LogOut, Loader2, Plus, Trash2, Calculator, RotateCcw, AlertCircle, CheckCircle2 } from "lucide-react"
+import { MatchResultsEditor } from "@/components/admin/MatchResultsEditor"
 
 interface Participant {
   id: string
@@ -112,9 +113,14 @@ export default function AdminDashboard() {
       const data = await res.json()
       setSyncing(false)
       if (res.ok) {
+        const finished = data.newlyFinished?.length ?? 0
         const parts = [`✓ ${data.synced} jogos verificados`]
         if (data.linked > 0) parts.push(`${data.linked} IDs linkados`)
-        if ((data.newlyFinished?.length ?? 0) > 0) parts.push(`${data.newlyFinished.length} recém-finalizados`)
+        if (finished > 0) {
+          parts.push(`${finished} jogo${finished > 1 ? "s" : ""} encerrado${finished > 1 ? "s" : ""} — pontos e ranking atualizados automaticamente`)
+        } else {
+          parts.push("nenhum jogo encerrado novo")
+        }
         setSyncMsg(parts.join(" · "))
       } else {
         setSyncMsg(`❌ ${data.error ?? "Erro desconhecido"}`)
@@ -162,19 +168,27 @@ export default function AdminDashboard() {
           </CardHeader>
           <CardContent className="pt-0 space-y-3">
             <div className="flex flex-wrap gap-2">
-              <Button onClick={handleSync} disabled={syncing} variant="outline" size="sm">
+              <Button onClick={handleSync} disabled={syncing} size="sm" className="bg-green-700 hover:bg-green-800 text-white">
                 {syncing ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <RefreshCw className="w-4 h-4 mr-2" />}
-                Sincronizar
+                Atualizar Jogos (automático)
               </Button>
               <Button onClick={handleRecalculate} disabled={scoring} variant="outline" size="sm">
                 {scoring ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Calculator className="w-4 h-4 mr-2" />}
                 Recalcular Pontos
               </Button>
             </div>
+            <p className="text-xs text-muted-foreground">
+              <strong>Atualizar Jogos</strong> busca os placares oficiais na football-data.org (1 requisição),
+              atualiza jogos ao vivo, encerra os finalizados e já pontua participantes e ranking.
+              <strong> Recalcular Pontos</strong> refaz a pontuação de todos os jogos encerrados — use após corrigir um placar manualmente.
+            </p>
             {syncMsg && <p className="text-xs text-muted-foreground">{syncMsg}</p>}
             {scoreMsg && <p className="text-xs text-muted-foreground">{scoreMsg}</p>}
           </CardContent>
         </Card>
+
+        {/* Edição manual de resultados */}
+        <MatchResultsEditor />
 
         {/* Palpites incompletos */}
         <Card>
