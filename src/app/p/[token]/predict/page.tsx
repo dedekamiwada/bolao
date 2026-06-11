@@ -1,13 +1,13 @@
 "use client"
 
-import { useState, useEffect, useCallback, useMemo, useRef } from "react"
+import { useState, useEffect, useCallback, useMemo } from "react"
 import { useParams, useRouter } from "next/navigation"
 import { GroupMatchCard } from "@/components/predict/GroupMatchCard"
 import { MatchPredictionsModal } from "@/components/predict/MatchPredictionsModal"
 import { SimulatedStandings } from "@/components/predict/SimulatedStandings"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { PanelCarousel } from "@/components/shared/PanelCarousel"
 import { ArrowLeft, Save, Loader2, Calendar, LayoutGrid, Lock, Clock, List, FileDown } from "lucide-react"
 import Link from "next/link"
 import { GROUP_LETTERS } from "@/types/domain"
@@ -317,19 +317,6 @@ export default function PredictPage() {
 
   const groupsWithMatches = GROUP_LETTERS.filter(g => matches.some(m => m.group_letter === g))
 
-  // Swipe between groups
-  const touchStartX = useRef<number | null>(null)
-  function handleTouchStart(e: React.TouchEvent) { touchStartX.current = e.touches[0].clientX }
-  function handleTouchEnd(e: React.TouchEvent) {
-    if (touchStartX.current === null) return
-    const deltaX = e.changedTouches[0].clientX - touchStartX.current
-    touchStartX.current = null
-    if (Math.abs(deltaX) < 50) return
-    const idx = groupsWithMatches.indexOf(activeGroup as typeof GROUP_LETTERS[number])
-    if (deltaX < 0 && idx < groupsWithMatches.length - 1) setActiveGroup(groupsWithMatches[idx + 1])
-    else if (deltaX > 0 && idx > 0) setActiveGroup(groupsWithMatches[idx - 1])
-  }
-
   // Group matches by date (for date view)
   const matchesByDate = useMemo(() => {
     const sorted = [...matches].sort(
@@ -556,80 +543,74 @@ export default function PredictPage() {
 
         {/* ── VISÃO POR GRUPO ── */}
         {viewMode === "group" && (
-          <Tabs value={activeGroup} onValueChange={setActiveGroup}
-            onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
-            <p className="text-[11px] text-muted-foreground text-center mb-2 select-none">
-              ← deslize para mudar de grupo →
-            </p>
-            <TabsList className="flex flex-wrap h-auto gap-1 mb-4 bg-muted p-1">
-              {groupsWithMatches.map(g => {
-                const groupPreds = matches.filter(m => m.group_letter === g && predictions.has(m.id)).length
-                return (
-                  <TabsTrigger key={g} value={g} className="text-xs px-2 py-1 relative">
-                    {g}
-                    {groupPreds === 6 && (
-                      <span className="absolute -top-1 -right-1 w-2 h-2 bg-green-500 rounded-full" />
-                    )}
-                  </TabsTrigger>
-                )
-              })}
-            </TabsList>
-
-            {groupsWithMatches.map(g => {
-              const groupMatches = matches.filter(m => m.group_letter === g)
+          <PanelCarousel
+            hint="← deslize para mudar de grupo →"
+            index={Math.max(0, groupsWithMatches.indexOf(activeGroup as typeof GROUP_LETTERS[number]))}
+            onIndexChange={i => setActiveGroup(groupsWithMatches[i])}
+            labels={groupsWithMatches.map(g => {
+              const groupPreds = matches.filter(m => m.group_letter === g && predictions.has(m.id)).length
               return (
-                <TabsContent key={g} value={g}>
-                  <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-                    <div className="space-y-4">
-                      {([1, 2, 3] as const).map(roundNum => {
-                        const roundMatches = groupMatches.filter(
-                          m => getGroupRound(m.match_number) === roundNum
-                        )
-                        if (roundMatches.length === 0) return null
-                        const boundary = globalRoundBoundaries.get(roundNum)
-                        if (!boundary) return null
-                        const r2b2 = globalRoundBoundaries.get(2)
-                        const lockAt = roundNum >= 2 ? (r2b2?.firstMatchAt ?? boundary.firstMatchAt) : boundary.firstMatchAt
-
-                        return (
-                          <div key={roundNum} className="space-y-1.5">
-                            <div className="flex items-center gap-2 px-0.5">
-                              <span className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
-                                Rodada {roundNum}
-                              </span>
-                              <RoundStatusBadge
-                                roundNumber={roundNum}
-                                roundFirstMatchAt={lockAt}
-                                prevRoundLastMatchAt={null}
-                                now={now}
-                              />
-                            </div>
-                            <div className="space-y-2">
-                              {roundMatches.map(m => renderCard(m))}
-                            </div>
-                          </div>
-                        )
-                      })}
-                    </div>
-                    <Card className="h-fit sticky top-4">
-                      <CardHeader className="py-3 px-4">
-                        <CardTitle className="text-xs text-muted-foreground uppercase tracking-wide">
-                          Classificação Simulada — Grupo {g}
-                        </CardTitle>
-                      </CardHeader>
-                      <CardContent className="px-4 pb-4 pt-0">
-                        <SimulatedStandings
-                          groupLetter={g}
-                          matches={matches}
-                          predictions={predictions}
-                        />
-                      </CardContent>
-                    </Card>
-                  </div>
-                </TabsContent>
+                <span key={g} className="relative inline-block px-1">
+                  {g}
+                  {groupPreds === 6 && (
+                    <span className="absolute -top-1 -right-1 w-2 h-2 bg-green-500 rounded-full" />
+                  )}
+                </span>
               )
             })}
-          </Tabs>
+            panels={groupsWithMatches.map(g => {
+              const groupMatches = matches.filter(m => m.group_letter === g)
+              return (
+                <div key={g} className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+                  <div className="space-y-4">
+                    {([1, 2, 3] as const).map(roundNum => {
+                      const roundMatches = groupMatches.filter(
+                        m => getGroupRound(m.match_number) === roundNum
+                      )
+                      if (roundMatches.length === 0) return null
+                      const boundary = globalRoundBoundaries.get(roundNum)
+                      if (!boundary) return null
+                      const r2b2 = globalRoundBoundaries.get(2)
+                      const lockAt = roundNum >= 2 ? (r2b2?.firstMatchAt ?? boundary.firstMatchAt) : boundary.firstMatchAt
+
+                      return (
+                        <div key={roundNum} className="space-y-1.5">
+                          <div className="flex items-center gap-2 px-0.5">
+                            <span className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
+                              Rodada {roundNum}
+                            </span>
+                            <RoundStatusBadge
+                              roundNumber={roundNum}
+                              roundFirstMatchAt={lockAt}
+                              prevRoundLastMatchAt={null}
+                              now={now}
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            {roundMatches.map(m => renderCard(m))}
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                  <Card className="h-fit sticky top-4">
+                    <CardHeader className="py-3 px-4">
+                      <CardTitle className="text-xs text-muted-foreground uppercase tracking-wide">
+                        Classificação Simulada — Grupo {g}
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="px-4 pb-4 pt-0">
+                      <SimulatedStandings
+                        groupLetter={g}
+                        matches={matches}
+                        predictions={predictions}
+                      />
+                    </CardContent>
+                  </Card>
+                </div>
+              )
+            })}
+          />
         )}
 
         {/* ── VISÃO POR DATA ── */}

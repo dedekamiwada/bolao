@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button"
 import { TeamFlag } from "@/components/shared/TeamFlag"
 import { GroupStandingsTable } from "@/components/shared/GroupStandingsTable"
 import { TabSwitcher } from "@/components/shared/TabSwitcher"
+import { PanelCarousel } from "@/components/shared/PanelCarousel"
 import { STAGE_LABELS } from "@/types/domain"
 import {
   simulateGroupStandings,
@@ -46,6 +47,16 @@ interface BracketMatch {
 }
 
 const STAGE_ORDER = ["R32", "R16", "QF", "SF", "3RD", "FINAL"] as const
+
+// Rótulos curtos para os chips do carrossel de fases
+const STAGE_SHORT: Record<(typeof STAGE_ORDER)[number], string> = {
+  R32: "16 avos",
+  R16: "Oitavas",
+  QF: "Quartas",
+  SF: "Semis",
+  "3RD": "3º",
+  FINAL: "Final",
+}
 
 async function buildBracket(token: string) {
   const supabase = createAdminClient()
@@ -322,10 +333,12 @@ export default async function BracketPreviewPage({ params }: { params: Promise<{
             {
               label: "Grupos",
               content: (
-                <div className="space-y-4">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    {groups.map(g => (
-                      <div key={g.letter}>
+                <PanelCarousel
+                  hint="← deslize para mudar de grupo →"
+                  labels={groups.map(g => g.letter)}
+                  panels={groups.map(g => (
+                    <div key={g.letter} className="space-y-4">
+                      <div>
                         <GroupStandingsTable letter={g.letter} standings={g.standings} />
                         {g.predicted < g.total && (
                           <p className="text-[10px] text-amber-600 dark:text-amber-400 mt-0.5 px-1">
@@ -333,20 +346,20 @@ export default async function BracketPreviewPage({ params }: { params: Promise<{
                           </p>
                         )}
                       </div>
-                    ))}
-                  </div>
-                  <div className="text-center">
-                    <Button asChild variant="outline" size="sm">
-                      <Link href={`/p/${token}/predict`}>Editar palpites da Fase de Grupos</Link>
-                    </Button>
-                  </div>
-                </div>
+                      <div className="text-center">
+                        <Button asChild variant="outline" size="sm">
+                          <Link href={`/p/${token}/predict`}>Editar palpites da Fase de Grupos</Link>
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                />
               ),
             },
             {
               label: "Chaveamento",
               content: (
-                <div className="space-y-6">
+                <div className="space-y-4">
                   {/* Campeão previsto */}
                   {champion && (
                     <Card className="border-yellow-400 dark:border-yellow-600 bg-yellow-50/50 dark:bg-yellow-950/20">
@@ -363,43 +376,44 @@ export default async function BracketPreviewPage({ params }: { params: Promise<{
                     </Card>
                   )}
 
-                  {/* Fases */}
-                  {STAGE_ORDER.map(stage => {
-                    const stageMatches = bracket.filter(m => m.stage === stage)
-                    if (stageMatches.length === 0) return null
-                    return (
-                      <div key={stage}>
-                        <h2 className="font-semibold text-sm text-muted-foreground uppercase tracking-wide mb-2 px-1">
-                          {STAGE_LABELS[stage]}
-                        </h2>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                          {stageMatches.map(m => (
-                            <Card key={m.matchNumber}>
-                              <CardContent className="px-3 py-2">
-                                <p className="text-[10px] text-muted-foreground mb-0.5">Jogo {m.matchNumber}</p>
-                                <SlotRow
-                                  slot={m.home}
-                                  isWinner={m.winnerTeamId !== null && m.home.team?.id === m.winnerTeamId}
-                                  score={m.predHome}
-                                />
-                                <SlotRow
-                                  slot={m.away}
-                                  isWinner={m.winnerTeamId !== null && m.away.team?.id === m.winnerTeamId}
-                                  score={m.predAway}
-                                />
-                              </CardContent>
-                            </Card>
-                          ))}
+                  {/* Fases — uma por vez, deslize para navegar */}
+                  <PanelCarousel
+                    hint="← deslize para mudar de fase →"
+                    labels={STAGE_ORDER.filter(stage => bracket.some(m => m.stage === stage)).map(stage => STAGE_SHORT[stage])}
+                    panels={STAGE_ORDER.filter(stage => bracket.some(m => m.stage === stage)).map(stage => {
+                      const stageMatches = bracket.filter(m => m.stage === stage)
+                      return (
+                        <div key={stage} className="space-y-4">
+                          <h2 className="font-semibold text-sm text-muted-foreground uppercase tracking-wide px-1">
+                            {STAGE_LABELS[stage]}
+                          </h2>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            {stageMatches.map(m => (
+                              <Card key={m.matchNumber}>
+                                <CardContent className="px-3 py-2">
+                                  <p className="text-[10px] text-muted-foreground mb-0.5">Jogo {m.matchNumber}</p>
+                                  <SlotRow
+                                    slot={m.home}
+                                    isWinner={m.winnerTeamId !== null && m.home.team?.id === m.winnerTeamId}
+                                    score={m.predHome}
+                                  />
+                                  <SlotRow
+                                    slot={m.away}
+                                    isWinner={m.winnerTeamId !== null && m.away.team?.id === m.winnerTeamId}
+                                    score={m.predAway}
+                                  />
+                                </CardContent>
+                              </Card>
+                            ))}
+                          </div>
+                          <p className="text-xs text-muted-foreground text-center">
+                            Os jogos do 16 avos em diante avançam conforme seus palpites do mata-mata.
+                            Enquanto eles não estiverem disponíveis, as vagas aparecem como &quot;Vencedor J__&quot;.
+                          </p>
                         </div>
-                      </div>
-                    )
-                  })}
-
-                  {/* Nota sobre palpites do mata-mata */}
-                  <p className="text-xs text-muted-foreground text-center">
-                    Os jogos do 16 avos em diante avançam conforme seus palpites do mata-mata.
-                    Enquanto eles não estiverem disponíveis, as vagas aparecem como &quot;Vencedor J__&quot;.
-                  </p>
+                      )
+                    })}
+                  />
                 </div>
               ),
             },
