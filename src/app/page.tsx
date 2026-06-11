@@ -1,8 +1,9 @@
 import { createClient } from "@/lib/supabase/server"
+import { createAdminClient } from "@/lib/supabase/admin"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Trophy, Target, Zap, BookOpen } from "lucide-react"
+import { Trophy, Target, Zap, BookOpen, Table2 } from "lucide-react"
 import Link from "next/link"
 import { formatDate } from "@/lib/utils"
 import { TokenAccess } from "@/components/shared/TokenAccess"
@@ -11,10 +12,12 @@ import { TeamFlag } from "@/components/shared/TeamFlag"
 export const revalidate = 30
 
 async function getRanking() {
-  const supabase = await createClient()
+  // Admin client (server-only): participants não tem leitura pública via RLS,
+  // mas o ranking precisa exibir o nome
+  const supabase = createAdminClient()
   const { data: snapshots } = await supabase
     .from("ranking_snapshots")
-    .select("participant_id, total_points, exact_scores, correct_results, snapshot_date")
+    .select("participant_id, total_points, exact_scores, correct_results, snapshot_date, participants(name)")
     .order("snapshot_date", { ascending: false })
     .limit(300)
 
@@ -52,11 +55,17 @@ export default async function HomePage() {
         <div className="text-4xl mb-2">⚽</div>
         <h1 className="text-2xl font-bold tracking-tight">Bolão Copa 2026</h1>
         <p className="text-green-300 text-sm mt-1">FIFA World Cup • Canadá, México &amp; EUA</p>
-        <div className="mt-4">
+        <div className="mt-4 flex items-center justify-center gap-2">
           <Button asChild size="sm" className="bg-yellow-400 hover:bg-yellow-300 text-green-950 font-bold px-5">
             <Link href="/rules">
               <BookOpen className="w-4 h-4 mr-2" />
               Ver Regras &amp; Premiação
+            </Link>
+          </Button>
+          <Button asChild size="sm" variant="outline" className="border-green-600 bg-transparent text-green-100 hover:bg-green-800 hover:text-white">
+            <Link href="/grupos">
+              <Table2 className="w-4 h-4 mr-2" />
+              Grupos
             </Link>
           </Button>
         </div>
@@ -128,7 +137,7 @@ export default async function HomePage() {
                     <span className="w-6 text-center font-bold text-sm">
                       {idx === 0 ? "🥇" : idx === 1 ? "🥈" : idx === 2 ? "🥉" : idx + 1}
                     </span>
-                    <span className="flex-1 font-medium text-sm truncate">{entry.participant_id}</span>
+                    <span className="flex-1 font-medium text-sm truncate">{entry.participants?.name ?? "—"}</span>
                     <div className="flex items-center gap-3 shrink-0">
                       <span className="text-xs text-muted-foreground flex items-center gap-1">
                         <Target className="w-3 h-3" />{entry.exact_scores}

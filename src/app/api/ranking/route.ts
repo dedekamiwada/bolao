@@ -1,13 +1,15 @@
 import { NextResponse } from "next/server"
-import { createClient } from "@/lib/supabase/server"
+import { createAdminClient } from "@/lib/supabase/admin"
 
 export async function GET() {
-  const supabase = await createClient()
+  // Admin client: a tabela participants não tem leitura pública (RLS), e o
+  // ranking precisa do nome de cada participante
+  const supabase = createAdminClient()
 
   // Get today's ranking from snapshots
   const { data: snapshots } = await supabase
     .from("ranking_snapshots")
-    .select("participant_id, total_points, exact_scores, correct_results, rank_position, snapshot_date")
+    .select("participant_id, total_points, exact_scores, correct_results, rank_position, snapshot_date, participants(name)")
     .order("snapshot_date", { ascending: false })
     .limit(200)
 
@@ -52,6 +54,9 @@ export async function GET() {
     )
     .map((s, idx) => ({
       ...s,
+      // join retorna objeto ou array conforme a cardinalidade inferida
+      name: (Array.isArray(s.participants) ? s.participants[0]?.name : (s.participants as { name: string } | null)?.name) ?? null,
+      participants: undefined,
       rank_position: idx + 1,
       knockout_points: knockoutByPid.get(s.participant_id) ?? 0,
     }))

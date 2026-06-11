@@ -6,6 +6,7 @@ import { createAdminClient } from "@/lib/supabase/admin"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { TeamFlag } from "@/components/shared/TeamFlag"
+import { GroupStandingsTable } from "@/components/shared/GroupStandingsTable"
 import { STAGE_LABELS } from "@/types/domain"
 import {
   simulateGroupStandings,
@@ -96,6 +97,7 @@ async function buildBracket(token: string) {
   const groupLetters = [...new Set(groupMatches.map(m => m.group_letter).filter(Boolean))].sort() as string[]
   const standingsByGroup: Record<string, TeamStanding[]> = {}
   const groupsFullyPredicted = new Set<string>()
+  const predictedCountByGroup: Record<string, number> = {}
 
   for (const letter of groupLetters) {
     const gm = groupMatches.filter(m => m.group_letter === letter)
@@ -103,6 +105,7 @@ async function buildBracket(token: string) {
       gm.map(m => ({ id: m.id, homeTeamId: m.home_team_id!, awayTeamId: m.away_team_id!, groupLetter: letter })),
       predMap
     )
+    predictedCountByGroup[letter] = gm.filter(m => predMap.has(m.id)).length
     if (gm.every(m => predMap.has(m.id))) groupsFullyPredicted.add(letter)
   }
 
@@ -235,10 +238,27 @@ async function buildBracket(token: string) {
 
   const champion = winnerOf(104) ? teamById.get(winnerOf(104)!) ?? null : null
 
+  // Classificação simulada por grupo (inclui grupos com palpites parciais)
+  const groups = groupLetters.map(letter => ({
+    letter,
+    predicted: predictedCountByGroup[letter],
+    total: groupMatches.filter(m => m.group_letter === letter).length,
+    standings: standingsByGroup[letter].map(s => {
+      const t = teamById.get(s.teamId)
+      return {
+        ...s,
+        fifaCode: t?.fifa_code ?? "",
+        teamName: t?.name ?? "",
+        flagUrl: t?.flag_url ?? null,
+      }
+    }),
+  }))
+
   return {
     participant,
     bracket,
     champion,
+    groups,
     totalGroupPreds,
     groupsComplete: groupsFullyPredicted.size,
     totalGroups: groupLetters.length,
@@ -268,7 +288,7 @@ export default async function BracketPreviewPage({ params }: { params: Promise<{
   const data = await buildBracket(token)
   if (!data) notFound()
 
-  const { bracket, champion, totalGroupPreds, groupsComplete, totalGroups } = data
+  const { bracket, champion, groups, totalGroupPreds, groupsComplete, totalGroups } = data
 
   return (
     <main className="min-h-screen bg-background pb-8">
@@ -310,6 +330,25 @@ export default async function BracketPreviewPage({ params }: { params: Promise<{
             </CardContent>
           </Card>
         )}
+
+        {/* Classificação prevista dos grupos (palpites parciais incluídos) */}
+        <div>
+          <h2 className="font-semibold text-sm text-muted-foreground uppercase tracking-wide mb-2 px-1">
+            Previsão dos Grupos
+          </h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {groups.map(g => (
+              <div key={g.letter}>
+                <GroupStandingsTable letter={g.letter} standings={g.standings} />
+                {g.predicted < g.total && (
+                  <p className="text-[10px] text-amber-600 dark:text-amber-400 mt-0.5 px-1">
+                    {g.predicted}/{g.total} jogos palpitados — classificação parcial
+                  </p>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
 
         {/* Fases */}
         {STAGE_ORDER.map(stage => {
