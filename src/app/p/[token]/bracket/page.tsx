@@ -7,6 +7,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { TeamFlag } from "@/components/shared/TeamFlag"
 import { GroupStandingsTable } from "@/components/shared/GroupStandingsTable"
+import { TabSwitcher } from "@/components/shared/TabSwitcher"
 import { STAGE_LABELS } from "@/types/domain"
 import {
   simulateGroupStandings,
@@ -298,7 +299,7 @@ export default async function BracketPreviewPage({ params }: { params: Promise<{
           <h1 className="font-bold flex items-center gap-2">
             <GitFork className="w-4 h-4" /> Meu Chaveamento
           </h1>
-          <p className="text-green-300 text-xs">Previsão do mata-mata segundo seus palpites</p>
+          <p className="text-green-300 text-xs">Previsão dos grupos e do mata-mata segundo seus palpites</p>
         </div>
       </div>
 
@@ -315,83 +316,95 @@ export default async function BracketPreviewPage({ params }: { params: Promise<{
           </div>
         )}
 
-        {/* Campeão previsto */}
-        {champion && (
-          <Card className="border-yellow-400 dark:border-yellow-600 bg-yellow-50/50 dark:bg-yellow-950/20">
-            <CardContent className="p-4 flex items-center gap-3">
-              <Trophy className="w-8 h-8 text-yellow-500 shrink-0" />
-              <div className="flex items-center gap-2">
-                <TeamFlag flagUrl={champion.flag_url} name={champion.name} size="md" />
-                <div>
-                  <p className="font-bold">{champion.name}</p>
-                  <p className="text-xs text-muted-foreground">Seu campeão da Copa 2026</p>
+        {/* Abas: Previsão dos Grupos × Chaveamento */}
+        <TabSwitcher
+          tabs={[
+            {
+              label: "Grupos",
+              content: (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {groups.map(g => (
+                      <div key={g.letter}>
+                        <GroupStandingsTable letter={g.letter} standings={g.standings} />
+                        {g.predicted < g.total && (
+                          <p className="text-[10px] text-amber-600 dark:text-amber-400 mt-0.5 px-1">
+                            {g.predicted}/{g.total} jogos palpitados — classificação parcial
+                          </p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                  <div className="text-center">
+                    <Button asChild variant="outline" size="sm">
+                      <Link href={`/p/${token}/predict`}>Editar palpites da Fase de Grupos</Link>
+                    </Button>
+                  </div>
                 </div>
-              </div>
-            </CardContent>
-          </Card>
-        )}
+              ),
+            },
+            {
+              label: "Chaveamento",
+              content: (
+                <div className="space-y-6">
+                  {/* Campeão previsto */}
+                  {champion && (
+                    <Card className="border-yellow-400 dark:border-yellow-600 bg-yellow-50/50 dark:bg-yellow-950/20">
+                      <CardContent className="p-4 flex items-center gap-3">
+                        <Trophy className="w-8 h-8 text-yellow-500 shrink-0" />
+                        <div className="flex items-center gap-2">
+                          <TeamFlag flagUrl={champion.flag_url} name={champion.name} size="md" />
+                          <div>
+                            <p className="font-bold">{champion.name}</p>
+                            <p className="text-xs text-muted-foreground">Seu campeão da Copa 2026</p>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  )}
 
-        {/* Classificação prevista dos grupos (palpites parciais incluídos) */}
-        <div>
-          <h2 className="font-semibold text-sm text-muted-foreground uppercase tracking-wide mb-2 px-1">
-            Previsão dos Grupos
-          </h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {groups.map(g => (
-              <div key={g.letter}>
-                <GroupStandingsTable letter={g.letter} standings={g.standings} />
-                {g.predicted < g.total && (
-                  <p className="text-[10px] text-amber-600 dark:text-amber-400 mt-0.5 px-1">
-                    {g.predicted}/{g.total} jogos palpitados — classificação parcial
+                  {/* Fases */}
+                  {STAGE_ORDER.map(stage => {
+                    const stageMatches = bracket.filter(m => m.stage === stage)
+                    if (stageMatches.length === 0) return null
+                    return (
+                      <div key={stage}>
+                        <h2 className="font-semibold text-sm text-muted-foreground uppercase tracking-wide mb-2 px-1">
+                          {STAGE_LABELS[stage]}
+                        </h2>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                          {stageMatches.map(m => (
+                            <Card key={m.matchNumber}>
+                              <CardContent className="px-3 py-2">
+                                <p className="text-[10px] text-muted-foreground mb-0.5">Jogo {m.matchNumber}</p>
+                                <SlotRow
+                                  slot={m.home}
+                                  isWinner={m.winnerTeamId !== null && m.home.team?.id === m.winnerTeamId}
+                                  score={m.predHome}
+                                />
+                                <SlotRow
+                                  slot={m.away}
+                                  isWinner={m.winnerTeamId !== null && m.away.team?.id === m.winnerTeamId}
+                                  score={m.predAway}
+                                />
+                              </CardContent>
+                            </Card>
+                          ))}
+                        </div>
+                      </div>
+                    )
+                  })}
+
+                  {/* Nota sobre palpites do mata-mata */}
+                  <p className="text-xs text-muted-foreground text-center">
+                    Os jogos do 16 avos em diante avançam conforme seus palpites do mata-mata.
+                    Enquanto eles não estiverem disponíveis, as vagas aparecem como &quot;Vencedor J__&quot;.
                   </p>
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Fases */}
-        {STAGE_ORDER.map(stage => {
-          const stageMatches = bracket.filter(m => m.stage === stage)
-          if (stageMatches.length === 0) return null
-          return (
-            <div key={stage}>
-              <h2 className="font-semibold text-sm text-muted-foreground uppercase tracking-wide mb-2 px-1">
-                {STAGE_LABELS[stage]}
-              </h2>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                {stageMatches.map(m => (
-                  <Card key={m.matchNumber}>
-                    <CardContent className="px-3 py-2">
-                      <p className="text-[10px] text-muted-foreground mb-0.5">Jogo {m.matchNumber}</p>
-                      <SlotRow
-                        slot={m.home}
-                        isWinner={m.winnerTeamId !== null && m.home.team?.id === m.winnerTeamId}
-                        score={m.predHome}
-                      />
-                      <SlotRow
-                        slot={m.away}
-                        isWinner={m.winnerTeamId !== null && m.away.team?.id === m.winnerTeamId}
-                        score={m.predAway}
-                      />
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
-            </div>
-          )
-        })}
-
-        {/* Nota sobre palpites do mata-mata */}
-        <div className="text-xs text-muted-foreground text-center space-y-2">
-          <p>
-            Os jogos do 16 avos em diante avançam conforme seus palpites do mata-mata.
-            Enquanto eles não estiverem disponíveis, as vagas aparecem como &quot;Vencedor J__&quot;.
-          </p>
-          <Button asChild variant="outline" size="sm">
-            <Link href={`/p/${token}/predict`}>Editar palpites da Fase de Grupos</Link>
-          </Button>
-        </div>
+                </div>
+              ),
+            },
+          ]}
+        />
       </div>
     </main>
   )
