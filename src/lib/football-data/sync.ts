@@ -1,7 +1,7 @@
 import { createAdminClient } from "@/lib/supabase/admin"
 import { fetchLiveAndFinishedMatches, fetchAllMatches } from "./client"
 import { FD_STATUS_MAP } from "./types"
-import { recalculateMatchScores } from "@/lib/scoring/calculate"
+import { recalculateMatchScores, updateRankingSnapshots } from "@/lib/scoring/calculate"
 
 export async function syncMatches(fullSync = false) {
   const supabase = createAdminClient()
@@ -116,7 +116,10 @@ export async function syncMatches(fullSync = false) {
 
   // ── Auto-calculate scores for newly finished matches ─────────────────────
   for (const matchId of newlyFinished) {
-    await recalculateMatchScores(matchId)
+    await recalculateMatchScores(matchId, { updateRanking: false })
+  }
+  if (newlyFinished.length > 0) {
+    await updateRankingSnapshots(supabase)
   }
 
   // ── Update last_sync timestamp (best-effort) ─────────────────────────────

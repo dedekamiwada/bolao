@@ -3,7 +3,9 @@ import { scoreGroupMatch } from "./group"
 import { scoreKnockoutMatch } from "./knockout"
 import type { Stage } from "@/types/domain"
 
-export async function recalculateMatchScores(matchId: number) {
+// Recalculates points for a single match. Does NOT update ranking snapshots —
+// call updateRankingSnapshots() once after processing a batch of matches.
+export async function recalculateMatchScores(matchId: number, opts?: { updateRanking?: boolean }) {
   const supabase = createAdminClient()
 
   // Get match details
@@ -24,19 +26,29 @@ export async function recalculateMatchScores(matchId: number) {
   if (!participants?.length) return 0
 
   const isGroup = match.stage === "GROUP"
-  let processed = 0
 
-  for (const { id: participantId } of participants) {
+  // Fetch all predictions for this match in one query instead of one per participant
+  const predByParticipant = new Map<string, { home_score: number; away_score: number; winner_team_id?: number | null }>()
+  if (isGroup) {
+    const { data: preds } = await supabase
+      .from("group_predictions")
+      .select("participant_id, home_score, away_score")
+      .eq("match_id", matchId)
+    for (const p of preds ?? []) predByParticipant.set(p.participant_id, p)
+  } else {
+    const { data: preds } = await supabase
+      .from("knockout_predictions")
+      .select("participant_id, home_score, away_score, winner_team_id")
+      .eq("match_id", matchId)
+    for (const p of preds ?? []) predByParticipant.set(p.participant_id, p)
+  }
+
+  const calculatedAt = new Date().toISOString()
+  const upserts = participants.map(({ id: participantId }) => {
     let points = { exact: 0, result: 0, goalDiff: 0, total: 0 }
+    const pred = predByParticipant.get(participantId)
 
     if (isGroup) {
-      const { data: pred } = await supabase
-        .from("group_predictions")
-        .select("home_score, away_score")
-        .eq("participant_id", participantId)
-        .eq("match_id", matchId)
-        .single()
-
       if (pred) {
         const breakdown = scoreGroupMatch(
           { home: pred.home_score, away: pred.away_score },
@@ -45,13 +57,6 @@ export async function recalculateMatchScores(matchId: number) {
         points = { exact: breakdown.exactScore, result: breakdown.result, goalDiff: breakdown.goalDiff, total: breakdown.total }
       }
     } else {
-      const { data: pred } = await supabase
-        .from("knockout_predictions")
-        .select("home_score, away_score, winner_team_id")
-        .eq("participant_id", participantId)
-        .eq("match_id", matchId)
-        .single()
-
       if (pred && pred.winner_team_id && match.winner_team_id) {
         const breakdown = scoreKnockoutMatch(
           match.stage as Stage,
@@ -62,8 +67,7 @@ export async function recalculateMatchScores(matchId: number) {
       }
     }
 
-    // Upsert match score
-    await supabase.from("match_scores").upsert({
+    return {
       participant_id: participantId,
       match_id: matchId,
       points_exact_score: points.exact,
@@ -71,26 +75,41 @@ export async function recalculateMatchScores(matchId: number) {
       points_goal_diff: points.goalDiff,
       points_classification: 0,
       total_points: points.total,
-      calculated_at: new Date().toISOString(),
-    }, { onConflict: "participant_id,match_id" })
+      calculated_at: calculatedAt,
+    }
+  })
 
-    processed++
+  // Batch upsert all participants' scores for this match in one request
+  await supabase.from("match_scores").upsert(upserts, { onConflict: "participant_id,match_id" })
+  const processed = upserts.length
+
+  // Update ranking snapshots (skip when batching — caller updates once at the end)
+  if (opts?.updateRanking !== false) {
+    await updateRankingSnapshots(supabase)
   }
-
-  // Update ranking snapshots
-  await updateRankingSnapshots(supabase)
   return processed
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function updateRankingSnapshots(supabase: any) {
+export async function updateRankingSnapshots(supabase: any) {
   const today = new Date().toISOString().split("T")[0]
 
-  const { data: totals } = await supabase
-    .from("match_scores")
-    .select("participant_id, total_points, points_exact_score")
+  // Paginate to avoid PostgREST's default 1000-row cap (this table can exceed
+  // that once most matches have been scored).
+  const totals: { participant_id: string; total_points: number; points_exact_score: number }[] = []
+  const PAGE_SIZE = 1000
+  for (let from = 0; ; from += PAGE_SIZE) {
+    const { data: page } = await supabase
+      .from("match_scores")
+      .select("participant_id, total_points, points_exact_score")
+      .order("id") // ordering estável é obrigatório para paginar sem pular/duplicar linhas
+      .range(from, from + PAGE_SIZE - 1)
+    if (!page?.length) break
+    totals.push(...page)
+    if (page.length < PAGE_SIZE) break
+  }
 
-  if (!totals?.length) return
+  if (!totals.length) return
 
   // Aggregate per participant
   const agg = new Map<string, { total: number; exact: number; correct: number }>()

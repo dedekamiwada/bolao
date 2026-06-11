@@ -2,6 +2,9 @@ import { NextResponse } from "next/server"
 import { requireAdmin } from "@/lib/admin-auth"
 import { syncMatches } from "@/lib/football-data/sync"
 
+// Full sync atualiza ~104 jogos um a um; precisa de mais que os 10s padrão
+export const maxDuration = 60
+
 export async function POST() {
   const { error } = await requireAdmin()
   if (error) return error
