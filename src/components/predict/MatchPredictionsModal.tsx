@@ -80,6 +80,7 @@ export function MatchPredictionsModal({ match, isLocked, isFinished, onClose }: 
   const [loading, setLoading] = useState(true)
   const [provisional, setProvisional] = useState(false)
   const [liveScore, setLiveScore] = useState<{ home: number; away: number } | null>(null)
+  const [sortBy, setSortBy] = useState<"match" | "overall">("match")
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -110,6 +111,17 @@ export function MatchPredictionsModal({ match, isLocked, isFinished, onClose }: 
   const showPredictions = isLocked || matchFinished
   const showPoints = matchFinished || provisional
   const displayScore = liveScore ?? { home: match.home_score, away: match.away_score }
+
+  // Ordenação: pontos deste jogo (API já manda assim) ou ranking geral do bolão.
+  // No geral, o provisório soma o ganho do jogo ao vivo (mesmo valor exibido).
+  const sortedEntries = sortBy === "match"
+    ? entries
+    : [...entries].sort((a, b) => {
+        const liveBonus = provisional && !matchFinished
+        const totalA = a.overall_points + (liveBonus ? a.total_points ?? 0 : 0)
+        const totalB = b.overall_points + (liveBonus ? b.total_points ?? 0 : 0)
+        return totalB - totalA || (b.total_points ?? 0) - (a.total_points ?? 0) || a.name.localeCompare(b.name)
+      })
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
@@ -178,6 +190,28 @@ export function MatchPredictionsModal({ match, isLocked, isFinished, onClose }: 
             </p>
           ) : (
             <>
+              {/* Ordenação — só faz sentido quando há pontos para comparar */}
+              {showPoints && (
+                <div className="flex gap-1.5 mb-3">
+                  <button
+                    onClick={() => setSortBy("match")}
+                    className={`flex-1 py-1 px-2 rounded-md text-xs font-medium border transition-colors ${
+                      sortBy === "match" ? "bg-green-700 text-white border-green-700" : "text-muted-foreground hover:bg-muted"
+                    }`}
+                  >
+                    Pontos do jogo
+                  </button>
+                  <button
+                    onClick={() => setSortBy("overall")}
+                    className={`flex-1 py-1 px-2 rounded-md text-xs font-medium border transition-colors ${
+                      sortBy === "overall" ? "bg-green-700 text-white border-green-700" : "text-muted-foreground hover:bg-muted"
+                    }`}
+                  >
+                    Ranking geral
+                  </button>
+                </div>
+              )}
+
               {/* Legend — jogo finalizado ou pontuação provisória ao vivo */}
               {showPoints && (
                 <div className="flex flex-wrap gap-2 mb-3 pb-3 border-b">
@@ -190,7 +224,7 @@ export function MatchPredictionsModal({ match, isLocked, isFinished, onClose }: 
 
               {/* Ranking list */}
               <div className="space-y-1.5 relative">
-                {entries.map((e, idx) => (
+                {sortedEntries.map((e, idx) => (
                   <div
                     key={e.participant_id}
                     className="flex items-center gap-3 px-2 py-2 rounded-lg bg-muted/30"
