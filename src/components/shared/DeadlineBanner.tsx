@@ -11,9 +11,11 @@ interface Props {
 function formatTime(ms: number) {
   if (ms <= 0) return "Encerrado"
   const totalSeconds = Math.floor(ms / 1000)
-  const h = Math.floor(totalSeconds / 3600)
+  const d = Math.floor(totalSeconds / 86400)
+  const h = Math.floor((totalSeconds % 86400) / 3600)
   const m = Math.floor((totalSeconds % 3600) / 60)
   const s = totalSeconds % 60
+  if (d > 0) return `${d}d ${h}h`
   if (h > 0) return `${h}h ${m.toString().padStart(2, "0")}m`
   if (m > 0) return `${m}m ${s.toString().padStart(2, "0")}s`
   return `${s}s`

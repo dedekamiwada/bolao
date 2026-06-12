@@ -23,36 +23,21 @@ function computeNextDeadline(
   const now = Date.now()
 
   // --- Group stage ---
-  // Work per group to determine which rounds are still open
-  const groups = [...new Set(groupMatches.map(m => m.group_letter).filter(Boolean))] as string[]
-  let earliestGroupDeadline: number | null = null
-  let groupDeadlineLabel = ""
-
-  for (const g of groups) {
-    const gMatches = groupMatches.filter(m => m.group_letter === g)
-    if (gMatches.length === 0) continue
-
-    for (const round of [1, 2, 3] as const) {
-      // Lock rule: rounds 2 and 3 lock together (before round 2's first match).
-      // All rounds are open from day 1 — no "wait for previous round" gate.
-      const lockRound: 1 | 2 | 3 = round >= 2 ? 2 : 1
-      const lockRoundMatches = gMatches.filter(m => getGroupRound(m.match_number) === lockRound)
-      if (lockRoundMatches.length === 0) continue
-      const firstLockMatchAt = getRoundFirstMatchAt(lockRoundMatches, lockRound)
+  // Mesma regra GLOBAL de isGroupMatchBettable: a Rodada 1 inteira fecha 15 min
+  // antes do 1º jogo da Copa; as Rodadas 2 e 3 fecham juntas, 15 min antes do
+  // 1º jogo de rodada 2 entre todos os grupos.
+  if (groupMatches.length > 0) {
+    for (const { round, label } of [
+      { round: 1 as const, label: "Rodada 1 da Fase de Grupos" },
+      { round: 2 as const, label: "Rodadas 2 e 3 da Fase de Grupos" },
+    ]) {
+      if (!groupMatches.some(m => getGroupRound(m.match_number) === round)) continue
+      const firstLockMatchAt = getRoundFirstMatchAt(groupMatches, round)
       const lockTime = new Date(firstLockMatchAt).getTime() - CUTOFF_MINUTES * 60 * 1000
-
       if (now < lockTime) {
-        if (earliestGroupDeadline === null || lockTime < earliestGroupDeadline) {
-          earliestGroupDeadline = lockTime
-          groupDeadlineLabel = round === 1 ? "Rodada 1 da Fase de Grupos" : "Rodadas 2 e 3 da Fase de Grupos"
-        }
-        break // Only care about the earliest open round per group
+        return { deadlineAt: new Date(lockTime).toISOString(), label }
       }
     }
-  }
-
-  if (earliestGroupDeadline !== null && earliestGroupDeadline > now) {
-    return { deadlineAt: new Date(earliestGroupDeadline).toISOString(), label: groupDeadlineLabel }
   }
 
   // --- Knockout stage ---
@@ -206,7 +191,7 @@ export default async function ParticipantPage({ params }: { params: Promise<{ to
                         <span className="text-sm font-medium truncate">{m.home_team?.name ?? m.home_team?.fifa_code ?? "?"}</span>
                       </div>
                       <span className="text-xs font-bold text-muted-foreground shrink-0 px-1">
-                        {m.status === "LIVE" ? `${m.home_score} × ${m.away_score}` : "×"}
+                        {m.status === "LIVE" && m.home_score != null ? `${m.home_score} × ${m.away_score}` : "×"}
                       </span>
                       <div className="flex flex-1 items-center justify-end gap-1.5 min-w-0">
                         <span className="text-sm font-medium truncate text-right">{m.away_team?.name ?? m.away_team?.fifa_code ?? "?"}</span>

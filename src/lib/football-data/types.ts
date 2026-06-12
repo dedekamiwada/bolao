@@ -9,8 +9,9 @@ export interface FDScore {
   winner: "HOME_TEAM" | "AWAY_TEAM" | "DRAW" | null
   duration: "REGULAR" | "EXTRA_TIME" | "PENALTY_SHOOTOUT"
   fullTime: { home: number | null; away: number | null }
-  extraTime: { home: number | null; away: number | null }
-  penalties: { home: number | null; away: number | null }
+  // extraTime e penalties SÓ vêm na resposta quando o jogo teve prorrogação/pênaltis
+  extraTime?: { home: number | null; away: number | null }
+  penalties?: { home: number | null; away: number | null }
 }
 
 export interface FDMatch {
