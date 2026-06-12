@@ -1,13 +1,14 @@
 "use client"
 
 import { useEffect, useState, useCallback } from "react"
-import { X, Loader2, Lock } from "lucide-react"
+import { X, Loader2, Lock, RefreshCw } from "lucide-react"
 
 interface PredictionEntry {
   participant_id: string
   name: string
   home_score: number
   away_score: number
+  overall_points: number
   total_points: number | null
   points_exact_score: number | null
   points_result: number | null
@@ -37,8 +38,10 @@ interface Props {
   onClose: () => void
 }
 
-// Color + label based on point breakdown
-function PointsBadge({ entry }: { entry: PredictionEntry }) {
+// Total geral do participante + ganho neste jogo:
+// +5 verde escuro (placar exato) · +4 verde claro (resultado + saldo)
+// +3 amarelo (resultado certo) · +0 vermelho (errou)
+function PointsBadge({ entry, provisional }: { entry: PredictionEntry; provisional: boolean }) {
   const pts = entry.total_points
   if (pts === null) return <span className="text-xs text-muted-foreground w-16 text-right shrink-0">—</span>
 
@@ -47,28 +50,27 @@ function PointsBadge({ entry }: { entry: PredictionEntry }) {
   const hasGoalDiff = (entry.points_goal_diff ?? 0) > 0
 
   let bg = ""
-  let label = `+${pts}`
-
   if (pts === 0) {
     bg = "bg-red-100 text-red-700 dark:bg-red-950/40 dark:text-red-400"
-    label = "0 pts"
   } else if (isExact) {
-    bg = "bg-green-100 text-green-700 dark:bg-green-950/40 dark:text-green-400"
-    label = `${pts} pts ★`
+    bg = "bg-green-600 text-white dark:bg-green-700"
   } else if (isResult && hasGoalDiff) {
-    bg = "bg-teal-100 text-teal-700 dark:bg-teal-950/40 dark:text-teal-400"
-    label = `${pts} pts`
+    bg = "bg-green-100 text-green-700 dark:bg-green-950/40 dark:text-green-400"
   } else if (isResult) {
-    bg = "bg-blue-100 text-blue-700 dark:bg-blue-950/40 dark:text-blue-400"
-    label = `${pts} pts`
+    bg = "bg-yellow-100 text-yellow-700 dark:bg-yellow-950/40 dark:text-yellow-500"
   } else {
     bg = "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400"
-    label = `${pts} pts`
   }
 
+  // Provisório: total geral ainda não inclui este jogo → soma para mostrar onde ficaria
+  const overall = provisional ? entry.overall_points + pts : entry.overall_points
+
   return (
-    <span className={`text-xs font-bold px-2 py-0.5 rounded-full shrink-0 ${bg}`}>
-      {label}
+    <span className="flex items-center gap-1.5 shrink-0">
+      <span className="text-xs text-muted-foreground tabular-nums">{overall} pts</span>
+      <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${bg}`}>
+        +{pts}{isExact ? " ★" : ""}
+      </span>
     </span>
   )
 }
@@ -76,6 +78,8 @@ function PointsBadge({ entry }: { entry: PredictionEntry }) {
 export function MatchPredictionsModal({ match, isLocked, isFinished, onClose }: Props) {
   const [entries, setEntries] = useState<PredictionEntry[]>([])
   const [loading, setLoading] = useState(true)
+  const [provisional, setProvisional] = useState(false)
+  const [liveScore, setLiveScore] = useState<{ home: number; away: number } | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -83,6 +87,11 @@ export function MatchPredictionsModal({ match, isLocked, isFinished, onClose }: 
       const res = await fetch(`/api/matches/${match.id}/predictions`)
       const data = await res.json()
       setEntries(data.predictions ?? [])
+      setProvisional(data.provisional ?? false)
+      // Placar mais fresco que o da prop (atualizado pelo sync durante o jogo)
+      if (data.match?.home_score !== null && data.match?.home_score !== undefined) {
+        setLiveScore({ home: data.match.home_score, away: data.match.away_score })
+      }
     } finally {
       setLoading(false)
     }
@@ -99,6 +108,8 @@ export function MatchPredictionsModal({ match, isLocked, isFinished, onClose }: 
 
   const matchFinished = isFinished || match.status === "FINISHED"
   const showPredictions = isLocked || matchFinished
+  const showPoints = matchFinished || provisional
+  const displayScore = liveScore ?? { home: match.home_score, away: match.away_score }
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
@@ -116,18 +127,34 @@ export function MatchPredictionsModal({ match, isLocked, isFinished, onClose }: 
             </div>
             <div className="text-xs text-muted-foreground mt-0.5 flex items-center gap-2">
               {matchFinished ? (
-                <span>Resultado: <strong className="text-foreground">{match.home_score} × {match.away_score}</strong></span>
+                <span>Resultado: <strong className="text-foreground">{displayScore.home} × {displayScore.away}</strong></span>
               ) : match.status === "LIVE" ? (
-                <span className="text-red-500 font-semibold">● AO VIVO {match.home_score}×{match.away_score}</span>
+                <span className="text-red-500 font-semibold">● AO VIVO {displayScore.home ?? "–"}×{displayScore.away ?? "–"}</span>
               ) : (
                 <span>{new Date(match.scheduled_at).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })}</span>
               )}
             </div>
           </div>
-          <button onClick={onClose} className="text-muted-foreground hover:text-foreground p-1 -mt-1 -mr-1 rounded">
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-1 -mt-1 -mr-1">
+            {match.status === "LIVE" && (
+              <button onClick={load} disabled={loading} title="Atualizar placar e pontos" className="text-muted-foreground hover:text-foreground p-1 rounded">
+                <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
+              </button>
+            )}
+            <button onClick={onClose} className="text-muted-foreground hover:text-foreground p-1 rounded">
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
+
+        {/* Banner de pontuação provisória (jogo ao vivo) */}
+        {provisional && !matchFinished && (
+          <div className="flex items-center gap-2 bg-blue-50 dark:bg-blue-950/30 border-b border-blue-200 dark:border-blue-800 px-4 py-2 shrink-0">
+            <span className="text-xs text-blue-700 dark:text-blue-400">
+              ⏱️ Pontuação <strong>provisória</strong> com o placar atual — só vale ao final do jogo.
+            </span>
+          </div>
+        )}
 
         {/* Banner antes do fechamento */}
         {!showPredictions && (
@@ -151,13 +178,13 @@ export function MatchPredictionsModal({ match, isLocked, isFinished, onClose }: 
             </p>
           ) : (
             <>
-              {/* Legend — só após jogo finalizado */}
-              {matchFinished && (
+              {/* Legend — jogo finalizado ou pontuação provisória ao vivo */}
+              {showPoints && (
                 <div className="flex flex-wrap gap-2 mb-3 pb-3 border-b">
-                  <span className="text-[10px] bg-green-100 text-green-700 dark:bg-green-950/40 dark:text-green-400 px-2 py-0.5 rounded-full font-medium">★ Placar exato</span>
-                  <span className="text-[10px] bg-teal-100 text-teal-700 dark:bg-teal-950/40 dark:text-teal-400 px-2 py-0.5 rounded-full font-medium">Resultado + saldo</span>
-                  <span className="text-[10px] bg-blue-100 text-blue-700 dark:bg-blue-950/40 dark:text-blue-400 px-2 py-0.5 rounded-full font-medium">Resultado certo</span>
-                  <span className="text-[10px] bg-red-100 text-red-700 dark:bg-red-950/40 dark:text-red-400 px-2 py-0.5 rounded-full font-medium">Errou</span>
+                  <span className="text-[10px] bg-green-600 text-white dark:bg-green-700 px-2 py-0.5 rounded-full font-medium">+5 ★ Placar exato</span>
+                  <span className="text-[10px] bg-green-100 text-green-700 dark:bg-green-950/40 dark:text-green-400 px-2 py-0.5 rounded-full font-medium">+4 Resultado + saldo</span>
+                  <span className="text-[10px] bg-yellow-100 text-yellow-700 dark:bg-yellow-950/40 dark:text-yellow-500 px-2 py-0.5 rounded-full font-medium">+3 Resultado certo</span>
+                  <span className="text-[10px] bg-red-100 text-red-700 dark:bg-red-950/40 dark:text-red-400 px-2 py-0.5 rounded-full font-medium">+0 Errou</span>
                 </div>
               )}
 
@@ -170,7 +197,7 @@ export function MatchPredictionsModal({ match, isLocked, isFinished, onClose }: 
                   >
                     {/* Position */}
                     <span className="w-6 text-center text-sm font-bold shrink-0 text-muted-foreground">
-                      {matchFinished && e.total_points !== null
+                      {showPoints && e.total_points !== null
                         ? idx === 0 ? "🥇" : idx === 1 ? "🥈" : idx === 2 ? "🥉" : <span className="text-xs">{idx + 1}</span>
                         : <span className="text-xs">{idx + 1}</span>}
                     </span>
@@ -184,8 +211,8 @@ export function MatchPredictionsModal({ match, isLocked, isFinished, onClose }: 
                     </span>
 
                     {/* Points badge */}
-                    {matchFinished
-                      ? <PointsBadge entry={e} />
+                    {showPoints
+                      ? <PointsBadge entry={e} provisional={provisional && !matchFinished} />
                       : <span className="text-xs text-muted-foreground w-16 text-right shrink-0">—</span>}
                   </div>
                 ))}

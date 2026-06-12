@@ -3,8 +3,8 @@
   "configurations": [
     {
       "name": "bolao-dev",
-      "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev"],
+      "runtimeExecutable": "powershell",
+      "runtimeArgs": ["-Command", "$env:NODE_OPTIONS='--use-system-ca'; npm run dev"],
       "port": 3000
     }
   ]

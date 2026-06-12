@@ -680,13 +680,11 @@ export default function PredictPage() {
               {[...matchesByDate.entries()]
                 .filter(([dk]) => selectedDate === null || dk === selectedDate)
                 .map(([dateKey, dayMatches]) => {
+                  // Próximos: jogos ainda não finalizados (inclui ao vivo).
+                  // Encerrados: apenas jogos já finalizados.
                   const filtered = dayMatches.filter(m => {
-                    const isFinished = m.status === "FINISHED" || m.status === "LIVE"
-                    const info = matchRoundInfo.get(m.id)
-                    const roundLocked = info ? isRoundLocked(info.roundFirstMatchAt, now) : false
-                    const notYetOpen = info ? isRoundNotYetOpen(info.prevRoundLastMatchAt, now) : false
-                    if (statusFilter === "upcoming") return !roundLocked && !notYetOpen && !isFinished
-                    if (statusFilter === "done") return isFinished || roundLocked
+                    if (statusFilter === "upcoming") return m.status !== "FINISHED"
+                    if (statusFilter === "done") return m.status === "FINISHED"
                     return true
                   })
                   if (filtered.length === 0) return null
@@ -739,12 +737,8 @@ export default function PredictPage() {
                 .filter(([dk]) => selectedDate === null || dk === selectedDate)
                 .every(([, dm]) => {
                   const filtered = dm.filter(m => {
-                    const isFinished = m.status === "FINISHED" || m.status === "LIVE"
-                    const info = matchRoundInfo.get(m.id)
-                    const roundLocked = info ? isRoundLocked(info.roundFirstMatchAt, now) : false
-                    const notYetOpen = info ? isRoundNotYetOpen(info.prevRoundLastMatchAt, now) : false
-                    if (statusFilter === "upcoming") return !roundLocked && !notYetOpen && !isFinished
-                    if (statusFilter === "done") return isFinished || roundLocked
+                    if (statusFilter === "upcoming") return m.status !== "FINISHED"
+                    if (statusFilter === "done") return m.status === "FINISHED"
                     return true
                   })
                   return filtered.length === 0
@@ -753,7 +747,7 @@ export default function PredictPage() {
                   <p className="text-3xl mb-2">{statusFilter === "upcoming" ? "🎉" : "📭"}</p>
                   <p className="text-sm">
                     {statusFilter === "upcoming"
-                      ? "Todos os palpites desta data já estão encerrados!"
+                      ? "Todos os jogos desta data já foram realizados!"
                       : "Nenhum jogo encerrado ainda nesta data."}
                   </p>
                 </div>
