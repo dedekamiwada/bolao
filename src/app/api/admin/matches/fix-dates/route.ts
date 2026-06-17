@@ -42,7 +42,7 @@ async function buildDiff(): Promise<{ diffs: DateDiff[]; unmatched: number }> {
     `),
   ])
 
-  const dbMatches = (rawMatches ?? []) as DbMatch[]
+  const dbMatches = (rawMatches ?? []) as unknown as DbMatch[]
 
   // TLA → team_id
   const tlaToId = new Map<string, number>()
