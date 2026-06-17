@@ -3,7 +3,8 @@ import { createAdminClient } from "@/lib/supabase/admin"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Trophy, Target, Zap, BookOpen, Table2, BarChart2, Medal } from "lucide-react"
+import { TabSwitcher } from "@/components/shared/TabSwitcher"
+import { Trophy, Target, Zap, BookOpen, Table2, BarChart2, ArrowUp, ArrowDown } from "lucide-react"
 import Link from "next/link"
 import { formatDate } from "@/lib/utils"
 import { TokenAccess } from "@/components/shared/TokenAccess"
@@ -12,24 +13,34 @@ import { TeamFlag } from "@/components/shared/TeamFlag"
 export const revalidate = 30
 
 async function getRanking() {
-  // Admin client (server-only): participants não tem leitura pública via RLS,
-  // mas o ranking precisa exibir o nome
   const supabase = createAdminClient()
   const { data: snapshots } = await supabase
     .from("ranking_snapshots")
-    .select("participant_id, total_points, exact_scores, correct_results, snapshot_date, participants(name)")
+    .select("participant_id, total_points, exact_scores, correct_results, rank_position, snapshot_date, participants(name)")
     .order("snapshot_date", { ascending: false })
     .limit(300)
 
   if (!snapshots) return []
 
   const latest = new Map<string, (typeof snapshots)[0]>()
+  const prev = new Map<string, (typeof snapshots)[0]>()
+
   for (const s of snapshots) {
-    if (!latest.has(s.participant_id)) latest.set(s.participant_id, s)
+    if (!latest.has(s.participant_id)) {
+      latest.set(s.participant_id, s)
+    } else if (!prev.has(s.participant_id)) {
+      prev.set(s.participant_id, s)
+    }
   }
 
   return [...latest.values()]
     .sort((a, b) => b.total_points - a.total_points || b.exact_scores - a.exact_scores)
+    .map((entry, idx) => {
+      const prevEntry = prev.get(entry.participant_id)
+      const currentRank = idx + 1
+      const rankChange = prevEntry?.rank_position != null ? prevEntry.rank_position - currentRank : null
+      return { ...entry, currentRank, rankChange }
+    })
 }
 
 async function getNextMatches() {
@@ -47,26 +58,30 @@ async function getNextMatches() {
 
 const STAGE_ORDER = ["GROUP", "R32", "R16", "QF", "SF", "3RD", "FINAL"]
 const STAGE_LABELS: Record<string, string> = {
-  GROUP: "Grupos", R32: "16 avos", R16: "Oitavas", QF: "Quartas", SF: "Semis", "3RD": "3º Lugar", FINAL: "Final",
+  GROUP: "Fase de Grupos", R32: "16 avos", R16: "Oitavas", QF: "Quartas", SF: "Semis", "3RD": "3º Lugar", FINAL: "Final",
 }
 
 async function getRankingByStage() {
   const supabase = createAdminClient()
 
-  const [{ data: scores }, { data: nameSnaps }] = await Promise.all([
-    supabase
+  const scores: { participant_id: string; total_points: number; matches: { stage: string } | { stage: string }[] | null }[] = []
+  const PAGE_SIZE = 1000
+  for (let from = 0; ; from += PAGE_SIZE) {
+    const { data: page } = await supabase
       .from("match_scores")
       .select("participant_id, total_points, matches!inner(stage)")
       .order("id")
-      .limit(2000),
-    supabase
-      .from("ranking_snapshots")
-      .select("participant_id, participants(name)")
-      .order("snapshot_date", { ascending: false })
-      .limit(300),
-  ])
+      .range(from, from + PAGE_SIZE - 1)
+    if (!page?.length) break
+    scores.push(...(page as typeof scores))
+    if (page.length < PAGE_SIZE) break
+  }
 
-  if (!scores?.length) return []
+  const { data: nameSnaps } = await supabase
+    .from("ranking_snapshots")
+    .select("participant_id, participants(name)")
+    .order("snapshot_date", { ascending: false })
+    .limit(300)
 
   const nameMap = new Map<string, string>()
   for (const s of nameSnaps ?? []) {
@@ -77,6 +92,8 @@ async function getRankingByStage() {
       if (name) nameMap.set(s.participant_id, name)
     }
   }
+
+  if (!scores.length) return []
 
   const byStage: Record<string, Record<string, number>> = {}
   for (const score of scores) {
@@ -90,16 +107,89 @@ async function getRankingByStage() {
   return STAGE_ORDER
     .filter(s => byStage[s] && Object.values(byStage[s]).some(v => v > 0))
     .map(s => ({
+      key: s,
       label: STAGE_LABELS[s] ?? s,
-      top: Object.entries(byStage[s])
+      entries: Object.entries(byStage[s])
         .sort((a, b) => b[1] - a[1])
-        .slice(0, 5)
         .map(([pid, pts]) => ({ name: nameMap.get(pid) ?? "—", pts })),
     }))
 }
 
+function participantName(participants: { name: string } | { name: string }[] | null | undefined): string {
+  if (!participants) return "—"
+  if (Array.isArray(participants)) return participants[0]?.name ?? "—"
+  return (participants as { name: string }).name ?? "—"
+}
+
 export default async function HomePage() {
   const [ranking, nextMatches, stageRanking] = await Promise.all([getRanking(), getNextMatches(), getRankingByStage()])
+
+  const rankingGeral = (
+    <div className="space-y-1">
+      {ranking.length === 0 ? (
+        <p className="text-sm text-muted-foreground text-center py-8">
+          🏆 Nenhum palpite ainda — a Copa começa em breve!
+        </p>
+      ) : (
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        ranking.map((entry: any, idx: number) => (
+          <div key={entry.participant_id}
+            className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors
+              ${idx === 0 ? "bg-yellow-50 dark:bg-yellow-950/40" :
+                idx === 1 ? "bg-slate-50 dark:bg-slate-900/40" :
+                idx === 2 ? "bg-orange-50 dark:bg-orange-950/40" : ""}`}>
+            <span className="w-6 text-center font-bold text-sm">
+              {idx === 0 ? "🥇" : idx === 1 ? "🥈" : idx === 2 ? "🥉" : idx + 1}
+            </span>
+            <span className="flex-1 font-medium text-sm truncate">{participantName(entry.participants)}</span>
+            <div className="flex items-center gap-2 shrink-0">
+              {entry.rankChange !== null && entry.rankChange !== 0 && (
+                <span className={`flex items-center text-xs font-semibold ${entry.rankChange > 0 ? "text-green-600" : "text-red-500"}`}>
+                  {entry.rankChange > 0
+                    ? <><ArrowUp className="w-3 h-3" />{entry.rankChange}</>
+                    : <><ArrowDown className="w-3 h-3" />{Math.abs(entry.rankChange)}</>
+                  }
+                </span>
+              )}
+              <span className="text-xs text-muted-foreground flex items-center gap-1">
+                <Target className="w-3 h-3" />{entry.exact_scores}
+              </span>
+              <span className="font-bold text-sm">{entry.total_points} <span className="text-muted-foreground font-normal">pts</span></span>
+            </div>
+          </div>
+        ))
+      )}
+    </div>
+  )
+
+  const rankingPorFase = (
+    <div className="space-y-5">
+      {stageRanking.length === 0 ? (
+        <p className="text-sm text-muted-foreground text-center py-8">
+          Disponível após os primeiros jogos encerrados.
+        </p>
+      ) : (
+        stageRanking.map(stage => (
+          <div key={stage.key}>
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1.5 px-1">
+              {stage.label}
+            </p>
+            <div className="space-y-0.5">
+              {stage.entries.map((entry, idx) => (
+                <div key={entry.name} className={`flex items-center gap-3 px-3 py-2 rounded-lg ${idx === 0 ? "bg-yellow-50 dark:bg-yellow-950/40" : ""}`}>
+                  <span className="w-5 text-center font-bold text-sm text-muted-foreground">
+                    {idx === 0 ? "🥇" : idx === 1 ? "🥈" : idx === 2 ? "🥉" : idx + 1}
+                  </span>
+                  <span className="flex-1 text-sm">{entry.name}</span>
+                  <span className="font-bold text-sm">{entry.pts} <span className="text-muted-foreground font-normal text-xs">pts</span></span>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))
+      )}
+    </div>
+  )
 
   return (
     <main className="min-h-screen bg-gradient-to-b from-green-950 to-background">
@@ -171,76 +261,23 @@ export default async function HomePage() {
           </Card>
         )}
 
-        {/* Ranking */}
+        {/* Ranking com abas */}
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-base flex items-center gap-2">
               <Trophy className="w-4 h-4 text-yellow-500" />
-              Ranking Geral
+              Ranking
             </CardTitle>
           </CardHeader>
           <CardContent className="pt-0">
-            {ranking.length === 0 ? (
-              <p className="text-sm text-muted-foreground text-center py-8">
-                🏆 Nenhum palpite ainda — a Copa começa em breve!
-              </p>
-            ) : (
-              <div className="space-y-1">
-                {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-                {ranking.map((entry: any, idx: number) => (
-                  <div key={entry.participant_id}
-                    className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors
-                      ${idx === 0 ? "bg-yellow-50 dark:bg-yellow-950/40" :
-                        idx === 1 ? "bg-slate-50 dark:bg-slate-900/40" :
-                        idx === 2 ? "bg-orange-50 dark:bg-orange-950/40" : ""}`}>
-                    <span className="w-6 text-center font-bold text-sm">
-                      {idx === 0 ? "🥇" : idx === 1 ? "🥈" : idx === 2 ? "🥉" : idx + 1}
-                    </span>
-                    <span className="flex-1 font-medium text-sm truncate">{entry.participants?.name ?? "—"}</span>
-                    <div className="flex items-center gap-3 shrink-0">
-                      <span className="text-xs text-muted-foreground flex items-center gap-1">
-                        <Target className="w-3 h-3" />{entry.exact_scores}
-                      </span>
-                      <span className="font-bold text-sm">{entry.total_points} <span className="text-muted-foreground font-normal">pts</span></span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
+            <TabSwitcher
+              tabs={[
+                { label: "Geral", content: rankingGeral },
+                { label: "Por Fase", content: rankingPorFase },
+              ]}
+            />
           </CardContent>
         </Card>
-
-        {/* Ranking por fase */}
-        {stageRanking.length > 0 && (
-          <>
-            <div className="flex items-center gap-2 px-1 pt-1">
-              <Medal className="w-4 h-4 text-yellow-500" />
-              <h2 className="text-base font-semibold">Ranking por Fase</h2>
-            </div>
-            {stageRanking.map(stage => (
-              <Card key={stage.label}>
-                <CardHeader className="pb-2 pt-4">
-                  <CardTitle className="text-sm text-muted-foreground font-medium uppercase tracking-wide">
-                    {stage.label}
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="pt-0">
-                  <div className="space-y-1">
-                    {stage.top.map((entry, idx) => (
-                      <div key={entry.name} className={`flex items-center gap-3 px-3 py-2 rounded-lg ${idx === 0 ? "bg-yellow-50 dark:bg-yellow-950/40" : ""}`}>
-                        <span className="w-5 text-center font-bold text-sm text-muted-foreground">
-                          {idx === 0 ? "🥇" : idx === 1 ? "🥈" : idx === 2 ? "🥉" : idx + 1}
-                        </span>
-                        <span className="flex-1 text-sm">{entry.name}</span>
-                        <span className="font-bold text-sm">{entry.pts} <span className="text-muted-foreground font-normal text-xs">pts</span></span>
-                      </div>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </>
-        )}
 
         {/* Acesso por token */}
         <Card>
