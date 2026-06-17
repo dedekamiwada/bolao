@@ -1,7 +1,7 @@
 "use client"
 
-import { useEffect, useState, useCallback, useMemo } from "react"
-import { X, Loader2, Lock, RefreshCw, ArrowUp, ArrowDown } from "lucide-react"
+import { useEffect, useState, useCallback } from "react"
+import { X, Loader2, Lock, RefreshCw } from "lucide-react"
 
 interface PredictionEntry {
   participant_id: string
@@ -124,27 +124,6 @@ export function MatchPredictionsModal({ match, isLocked, isFinished, onClose }: 
         return totalB - totalA || (b.total_points ?? 0) - (a.total_points ?? 0) || a.name.localeCompare(b.name)
       })
 
-  // Mudança de posição no ranking geral causada por este jogo
-  // Rank antes: overall sem este jogo; Rank depois: overall com este jogo
-  const rankChanges = useMemo(() => {
-    const withPoints = entries.filter(e => e.total_points !== null)
-    if (withPoints.length === 0) return new Map<string, number>()
-
-    const overallAfter = (e: PredictionEntry) =>
-      liveBonus ? e.overall_points + (e.total_points ?? 0) : e.overall_points
-    const overallBefore = (e: PredictionEntry) =>
-      liveBonus ? e.overall_points : e.overall_points - (e.total_points ?? 0)
-
-    const sorted = (fn: (e: PredictionEntry) => number) =>
-      [...withPoints].sort((a, b) => fn(b) - fn(a))
-
-    const afterRanks = sorted(overallAfter)
-    const beforeRanks = sorted(overallBefore)
-
-    const beforeMap = new Map(beforeRanks.map((e, i) => [e.participant_id, i + 1]))
-    return new Map(afterRanks.map((e, i) => [e.participant_id, (beforeMap.get(e.participant_id) ?? i + 1) - (i + 1)]))
-  }, [entries, liveBonus])
-
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
       {/* Backdrop */}
@@ -260,19 +239,6 @@ export function MatchPredictionsModal({ match, isLocked, isFinished, onClose }: 
 
                     {/* Name — sempre visível */}
                     <span className="flex-1 text-sm font-medium truncate">{e.name}</span>
-
-                    {/* Seta de variação no ranking geral */}
-                    {showPoints && (() => {
-                      const change = rankChanges.get(e.participant_id) ?? 0
-                      if (change === 0) return <span className="w-8 shrink-0" />
-                      return (
-                        <span className={`flex items-center text-xs font-semibold shrink-0 w-8 ${change > 0 ? "text-green-600" : "text-red-500"}`}>
-                          {change > 0
-                            ? <><ArrowUp className="w-3 h-3" />{change}</>
-                            : <><ArrowDown className="w-3 h-3" />{Math.abs(change)}</>}
-                        </span>
-                      )
-                    })()}
 
                     {/* Prediction — borrada antes de fechar */}
                     <span className={`font-mono text-sm font-bold shrink-0 transition-all ${!showPredictions ? "blur-sm select-none pointer-events-none" : ""}`}>
