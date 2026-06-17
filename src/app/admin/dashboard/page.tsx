@@ -200,7 +200,7 @@ export default function AdminDashboard() {
           <h1 className="font-bold">Painel Admin</h1>
           <p className="text-green-300 text-xs">Bolão Copa 2026</p>
         </div>
-        <Button variant="ghost" size="sm" onClick={handleLogout} className="text-green-300 hover:text-white hover:bg-green-800">
+        <Button variant="ghost" size="sm" onClick={handleLogout} aria-label="Sair" className="text-green-300 hover:text-white hover:bg-green-800">
           <LogOut className="w-4 h-4" />
         </Button>
       </div>
@@ -307,7 +307,7 @@ export default function AdminDashboard() {
                 <AlertCircle className="w-4 h-4 text-orange-500" />
                 Palpites Incompletos
               </span>
-              <button onClick={loadPredStatus} className="text-muted-foreground hover:text-foreground">
+              <button onClick={loadPredStatus} aria-label="Atualizar palpites" className="text-muted-foreground hover:text-foreground">
                 <RefreshCw className={`w-3.5 h-3.5 ${predStatusLoading ? "animate-spin" : ""}`} />
               </button>
             </CardTitle>
@@ -383,7 +383,11 @@ export default function AdminDashboard() {
           </CardHeader>
           <CardContent className="pt-0">
             <div className="flex gap-2">
+              <label htmlFor="new-participant-name" className="sr-only">Nome do participante</label>
               <Input
+                id="new-participant-name"
+                name="participant-name"
+                autoComplete="off"
                 placeholder="Nome do participante"
                 value={newName}
                 onChange={e => setNewName(e.target.value)}
@@ -421,11 +425,10 @@ export default function AdminDashboard() {
                       </Badge>
                     </div>
                     <div className="flex items-center gap-1 shrink-0">
-                      {/* Novo link (regenerar token) */}
                       <Button
                         variant="ghost" size="icon"
                         className="h-7 w-7 text-muted-foreground hover:text-blue-600"
-                        title="Gerar novo link"
+                        aria-label={`Gerar novo link para ${p.name}`}
                         onClick={() => regenerateToken(p.id, p.name)}
                         disabled={actionId === p.id}
                       >
@@ -433,11 +436,10 @@ export default function AdminDashboard() {
                           ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
                           : <RotateCcw className="w-3.5 h-3.5" />}
                       </Button>
-                      {/* Excluir definitivamente */}
                       <Button
                         variant="ghost" size="icon"
                         className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                        title="Excluir definitivamente"
+                        aria-label={`Excluir ${p.name}`}
                         onClick={() => hardDeleteParticipant(p.id, p.name)}
                         disabled={actionId === p.id}
                       >

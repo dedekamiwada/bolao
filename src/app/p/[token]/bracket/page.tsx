@@ -279,7 +279,7 @@ async function buildBracket(token: string) {
 
 function SlotRow({ slot, isWinner, score }: { slot: BracketSlot; isWinner: boolean; score: number | null }) {
   return (
-    <div className={`flex items-center gap-2 py-1 ${isWinner ? "font-bold" : ""}`}>
+    <div className={`flex items-center gap-2 py-1 min-w-0 ${isWinner ? "font-bold" : ""}`}>
       {slot.team ? (
         <>
           <TeamFlag flagUrl={slot.team.flag_url} name={slot.team.name} size="sm" />
@@ -305,7 +305,7 @@ export default async function BracketPreviewPage({ params }: { params: Promise<{
   return (
     <main className="min-h-screen bg-background pb-8">
       <div className="bg-green-900 text-white px-4 py-4 flex items-center gap-3">
-        <Link href={`/p/${token}`}><ArrowLeft className="w-5 h-5 text-green-300" /></Link>
+        <Link href={`/p/${token}`} aria-label="Voltar"><ArrowLeft className="w-5 h-5 text-green-300" /></Link>
         <div>
           <h1 className="font-bold flex items-center gap-2">
             <GitFork className="w-4 h-4" /> Meu Chaveamento

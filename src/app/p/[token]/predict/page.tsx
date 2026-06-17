@@ -394,7 +394,7 @@ export default function PredictPage() {
       {/* Header */}
       <div className="bg-green-900 text-white px-4 py-4 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <Link href={`/p/${token}`}>
+          <Link href={`/p/${token}`} aria-label="Voltar">
             <ArrowLeft className="w-5 h-5 text-green-300" />
           </Link>
           <div>
@@ -765,8 +765,8 @@ export default function PredictPage() {
             <Button
               onClick={exportPdf}
               variant="outline"
+              aria-label="Exportar PDF dos palpites"
               className="shrink-0 border-green-700 text-green-700 hover:bg-green-50 dark:hover:bg-green-950/20"
-              title="Exportar PDF dos palpites"
             >
               <FileDown className="w-4 h-4" />
             </Button>

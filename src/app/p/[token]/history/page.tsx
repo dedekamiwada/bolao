@@ -120,7 +120,7 @@ export default function HistoryPage() {
   return (
     <main className="min-h-screen bg-background pb-8">
       <div className="bg-green-900 text-white px-4 py-4 flex items-center gap-3">
-        <Link href={`/p/${token}`}><ArrowLeft className="w-5 h-5 text-green-300" /></Link>
+        <Link href={`/p/${token}`} aria-label="Voltar"><ArrowLeft className="w-5 h-5 text-green-300" /></Link>
         <div>
           <h1 className="font-bold">Evolução do Ranking</h1>
           <p className="text-green-300 text-xs">Histórico da Copa</p>
