@@ -4,13 +4,12 @@ import { createAdminClient } from "@/lib/supabase/admin"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Trophy, ClipboardList, TrendingUp, Clock, BookOpen, GitFork, Table2 } from "lucide-react"
+import { Trophy, ClipboardList, TrendingUp, Clock, BookOpen, GitFork, Table2, ArrowUp, ArrowDown } from "lucide-react"
 import Link from "next/link"
 import { formatDate } from "@/lib/utils"
 import { TeamFlag } from "@/components/shared/TeamFlag"
 import { getGroupRound, getRoundFirstMatchAt } from "@/lib/group-rounds"
 import { DeadlineBanner } from "@/components/shared/DeadlineBanner"
-import { ShareCard } from "@/components/shared/ShareCard"
 
 const CUTOFF_MINUTES = 15
 
@@ -126,8 +125,11 @@ export default async function ParticipantPage({ params }: { params: Promise<{ to
               <div className="text-2xl font-bold flex items-center justify-center gap-1">
                 #{rankPosition}
                 {rankChange !== null && rankChange !== 0 && (
-                  <span className={`text-base font-bold ${rankChange > 0 ? "text-green-300" : "text-red-300"}`}>
-                    {rankChange > 0 ? `▲${rankChange}` : `▼${Math.abs(rankChange)}`}
+                  <span className={`flex items-center text-sm font-bold ${rankChange > 0 ? "text-green-300" : "text-red-300"}`}>
+                    {rankChange > 0
+                      ? <><ArrowUp className="w-3.5 h-3.5" />{rankChange}</>
+                      : <><ArrowDown className="w-3.5 h-3.5" />{Math.abs(rankChange)}</>
+                    }
                   </span>
                 )}
               </div>
@@ -269,13 +271,12 @@ export default async function ParticipantPage({ params }: { params: Promise<{ to
               Evolução
             </Link>
           </Button>
-          <Button asChild variant="outline" size="sm" className="flex-1">
+          <Button asChild variant="outline" size="sm" className="flex-1 col-span-2">
             <Link href={`/p/${token}/rules`}>
               <BookOpen className="w-4 h-4 mr-1" />
               Regras
             </Link>
           </Button>
-          <ShareCard name={participant.name} rank={rankPosition} points={totalPoints} exactScores={exactScores} />
         </div>
       </div>
     </main>

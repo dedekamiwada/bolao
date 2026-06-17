@@ -8,7 +8,6 @@ import Link from "next/link"
 import { formatDate } from "@/lib/utils"
 import { TokenAccess } from "@/components/shared/TokenAccess"
 import { TeamFlag } from "@/components/shared/TeamFlag"
-import { TabSwitcher } from "@/components/shared/TabSwitcher"
 
 export const revalidate = 30
 
@@ -213,34 +212,34 @@ export default async function HomePage() {
 
         {/* Ranking por fase */}
         {stageRanking.length > 0 && (
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base flex items-center gap-2">
-                <Medal className="w-4 h-4 text-yellow-500" />
-                Ranking por Fase
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="pt-0">
-              <TabSwitcher
-                tabs={stageRanking.map(stage => ({
-                  label: stage.label,
-                  content: (
-                    <div className="space-y-1">
-                      {stage.top.map((entry, idx) => (
-                        <div key={entry.name} className={`flex items-center gap-3 px-3 py-2 rounded-lg ${idx === 0 ? "bg-yellow-50 dark:bg-yellow-950/40" : ""}`}>
-                          <span className="w-5 text-center font-bold text-sm text-muted-foreground">
-                            {idx === 0 ? "🥇" : idx === 1 ? "🥈" : idx === 2 ? "🥉" : idx + 1}
-                          </span>
-                          <span className="flex-1 text-sm">{entry.name}</span>
-                          <span className="font-bold text-sm">{entry.pts} <span className="text-muted-foreground font-normal text-xs">pts</span></span>
-                        </div>
-                      ))}
-                    </div>
-                  ),
-                }))}
-              />
-            </CardContent>
-          </Card>
+          <>
+            <div className="flex items-center gap-2 px-1 pt-1">
+              <Medal className="w-4 h-4 text-yellow-500" />
+              <h2 className="text-base font-semibold">Ranking por Fase</h2>
+            </div>
+            {stageRanking.map(stage => (
+              <Card key={stage.label}>
+                <CardHeader className="pb-2 pt-4">
+                  <CardTitle className="text-sm text-muted-foreground font-medium uppercase tracking-wide">
+                    {stage.label}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="pt-0">
+                  <div className="space-y-1">
+                    {stage.top.map((entry, idx) => (
+                      <div key={entry.name} className={`flex items-center gap-3 px-3 py-2 rounded-lg ${idx === 0 ? "bg-yellow-50 dark:bg-yellow-950/40" : ""}`}>
+                        <span className="w-5 text-center font-bold text-sm text-muted-foreground">
+                          {idx === 0 ? "🥇" : idx === 1 ? "🥈" : idx === 2 ? "🥉" : idx + 1}
+                        </span>
+                        <span className="flex-1 text-sm">{entry.name}</span>
+                        <span className="font-bold text-sm">{entry.pts} <span className="text-muted-foreground font-normal text-xs">pts</span></span>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </>
         )}
 
         {/* Acesso por token */}
