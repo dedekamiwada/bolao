@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
-import { Users, RefreshCw, Copy, Check, LogOut, Loader2, Plus, Trash2, Calculator, RotateCcw, AlertCircle, CheckCircle2 } from "lucide-react"
+import { Users, RefreshCw, Copy, Check, LogOut, Loader2, Plus, Trash2, Calculator, RotateCcw, AlertCircle, CheckCircle2, CalendarClock } from "lucide-react"
 import { MatchResultsEditor } from "@/components/admin/MatchResultsEditor"
 
 interface Participant {
@@ -30,6 +30,15 @@ export default function AdminDashboard() {
   const [copiedLink, setCopiedLink] = useState("")
   const [loading, setLoading] = useState(true)
   const [actionId, setActionId] = useState<string | null>(null)
+
+  type DateDiff = {
+    match_id: number; home_team: string; away_team: string
+    db_date: string; api_date: string; diff_minutes: number; status: string
+  }
+  const [dateDiffs, setDateDiffs] = useState<DateDiff[] | null>(null)
+  const [checkingDates, setCheckingDates] = useState(false)
+  const [fixingDates, setFixingDates] = useState(false)
+  const [dateFixMsg, setDateFixMsg] = useState("")
 
   interface PredStatus { id: string; name: string; done: number; total: number; complete: boolean; missing: number }
   const [predStatus, setPredStatus] = useState<{ windowLabel: string; windowDeadline: string | null; statuses: PredStatus[] } | null>(null)
@@ -140,6 +149,44 @@ export default function AdminDashboard() {
     setScoreMsg(res.ok ? `✓ ${data.matchesProcessed} jogos recalculados` : "Erro ao recalcular")
   }
 
+  async function handleCheckDates() {
+    setCheckingDates(true)
+    setDateDiffs(null)
+    setDateFixMsg("")
+    try {
+      const res = await fetch("/api/admin/matches/fix-dates")
+      const data = await res.json()
+      if (res.ok) {
+        setDateDiffs(data.diffs)
+        if (data.diffs.length === 0) setDateFixMsg("✓ Todas as datas estão corretas.")
+      } else {
+        setDateFixMsg(`❌ ${data.error ?? "Erro desconhecido"}`)
+      }
+    } catch (err) {
+      setDateFixMsg(`❌ Erro de rede: ${String(err)}`)
+    }
+    setCheckingDates(false)
+  }
+
+  async function handleFixDates() {
+    if (!dateDiffs?.length) return
+    setFixingDates(true)
+    setDateFixMsg("")
+    try {
+      const res = await fetch("/api/admin/matches/fix-dates", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}) })
+      const data = await res.json()
+      if (res.ok) {
+        setDateFixMsg(`✓ ${data.updated} data${data.updated !== 1 ? "s" : ""} corrigida${data.updated !== 1 ? "s" : ""} com sucesso.`)
+        setDateDiffs(null)
+      } else {
+        setDateFixMsg(`❌ ${data.error ?? "Erro desconhecido"}`)
+      }
+    } catch (err) {
+      setDateFixMsg(`❌ Erro de rede: ${String(err)}`)
+    }
+    setFixingDates(false)
+  }
+
   async function handleLogout() {
     await fetch("/api/admin/auth", { method: "DELETE" })
     router.push("/admin")
@@ -189,6 +236,67 @@ export default function AdminDashboard() {
 
         {/* Edição manual de resultados */}
         <MatchResultsEditor />
+
+        {/* Correção de Datas */}
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm flex items-center gap-2">
+              <CalendarClock className="w-4 h-4" /> Correção de Datas
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="pt-0 space-y-3">
+            <p className="text-xs text-muted-foreground">
+              Compara os horários dos jogos no banco com a football-data.org e corrige divergências.
+              Nunca altera placares ou palpites.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <Button onClick={handleCheckDates} disabled={checkingDates || fixingDates} size="sm" variant="outline">
+                {checkingDates ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <CalendarClock className="w-4 h-4 mr-2" />}
+                Verificar Datas
+              </Button>
+              {dateDiffs && dateDiffs.length > 0 && (
+                <Button onClick={handleFixDates} disabled={fixingDates} size="sm" className="bg-amber-600 hover:bg-amber-700 text-white">
+                  {fixingDates ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Check className="w-4 h-4 mr-2" />}
+                  Corrigir {dateDiffs.length} jogo{dateDiffs.length !== 1 ? "s" : ""}
+                </Button>
+              )}
+            </div>
+
+            {dateDiffs && dateDiffs.length > 0 && (
+              <div className="rounded border overflow-hidden text-xs">
+                <div className="grid grid-cols-[1fr_1fr_auto] bg-muted px-3 py-1.5 font-medium text-muted-foreground gap-2">
+                  <span>Jogo</span>
+                  <span>Banco → API</span>
+                  <span>Δ</span>
+                </div>
+                {dateDiffs.map(d => {
+                  const fmt = (iso: string) => new Date(iso).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo" })
+                  const hours = Math.floor(d.diff_minutes / 60)
+                  const mins = d.diff_minutes % 60
+                  const delta = hours > 0 ? `${hours}h${mins > 0 ? `${mins}m` : ""}` : `${mins}m`
+                  return (
+                    <div key={d.match_id} className="grid grid-cols-[1fr_1fr_auto] px-3 py-2 gap-2 border-t items-start">
+                      <div>
+                        <span className="font-medium">{d.home_team} × {d.away_team}</span>
+                        <Badge variant={d.status === "FINISHED" ? "secondary" : "outline"} className="ml-1.5 text-[10px]">
+                          {d.status === "FINISHED" ? "Encerrado" : "Agendado"}
+                        </Badge>
+                      </div>
+                      <div className="text-muted-foreground leading-snug">
+                        <span className="line-through">{fmt(d.db_date)}</span>
+                        <br />
+                        <span className="text-foreground font-medium">{fmt(d.api_date)}</span>
+                      </div>
+                      <span className="text-amber-600 font-semibold">{delta}</span>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+
+            {dateFixMsg && <p className="text-xs text-muted-foreground">{dateFixMsg}</p>}
+          </CardContent>
+        </Card>
 
         {/* Palpites incompletos */}
         <Card>
