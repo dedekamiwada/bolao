@@ -10,6 +10,7 @@ import { formatDate } from "@/lib/utils"
 import { TeamFlag } from "@/components/shared/TeamFlag"
 import { getGroupRound, getRoundFirstMatchAt } from "@/lib/group-rounds"
 import { DeadlineBanner } from "@/components/shared/DeadlineBanner"
+import { ShareCard } from "@/components/shared/ShareCard"
 
 const CUTOFF_MINUTES = 15
 
@@ -71,7 +72,7 @@ async function getParticipantData(token: string) {
   const [
     { count: groupCount },
     { count: knockoutCount },
-    { data: snapshot },
+    { data: snapshots },
     { data: nextMatches },
     { data: myScores },
     { data: allGroupMatches },
@@ -79,7 +80,7 @@ async function getParticipantData(token: string) {
   ] = await Promise.all([
     supabase.from("group_predictions").select("id", { count: "exact", head: true }).eq("participant_id", participant.id),
     supabase.from("knockout_predictions").select("id", { count: "exact", head: true }).eq("participant_id", participant.id),
-    supabase.from("ranking_snapshots").select("total_points, rank_position, exact_scores, correct_results").eq("participant_id", participant.id).order("snapshot_date", { ascending: false }).limit(1).single(),
+    supabase.from("ranking_snapshots").select("total_points, rank_position, exact_scores, correct_results").eq("participant_id", participant.id).order("snapshot_date", { ascending: false }).limit(2),
     supabase.from("matches").select("id, stage, group_letter, scheduled_at, home_score, away_score, status, home_team:teams!matches_home_team_id_fkey(fifa_code, name, flag_url), away_team:teams!matches_away_team_id_fkey(fifa_code, name, flag_url)").in("status", ["SCHEDULED", "LIVE"]).order("scheduled_at", { ascending: true }).limit(3),
     supabase.from("match_scores").select("total_points, match_id, matches(stage, home_team:teams!matches_home_team_id_fkey(fifa_code), away_team:teams!matches_away_team_id_fkey(fifa_code), home_score, away_score)").eq("participant_id", participant.id).order("calculated_at", { ascending: false }).limit(5),
     supabase.from("matches").select("match_number, scheduled_at, group_letter, status").eq("stage", "GROUP").order("scheduled_at", { ascending: true }),
@@ -89,7 +90,13 @@ async function getParticipantData(token: string) {
   // Compute next betting deadline
   const nextDeadline = computeNextDeadline(allGroupMatches ?? [], upcomingKnockout ?? [])
 
-  return { participant, groupCount, knockoutCount, snapshot, nextMatches, myScores, nextDeadline }
+  const snapshot = snapshots?.[0] ?? null
+  const prevSnapshot = snapshots?.[1] ?? null
+  const rankChange = (snapshot?.rank_position != null && prevSnapshot?.rank_position != null)
+    ? prevSnapshot.rank_position - snapshot.rank_position
+    : null
+
+  return { participant, groupCount, knockoutCount, snapshot, rankChange, nextMatches, myScores, nextDeadline }
 }
 
 export default async function ParticipantPage({ params }: { params: Promise<{ token: string }> }) {
@@ -97,7 +104,7 @@ export default async function ParticipantPage({ params }: { params: Promise<{ to
   const data = await getParticipantData(token)
   if (!data) notFound()
 
-  const { participant, groupCount, knockoutCount, snapshot, nextMatches, myScores, nextDeadline } = data
+  const { participant, groupCount, knockoutCount, snapshot, rankChange, nextMatches, myScores, nextDeadline } = data
   const totalPoints = snapshot?.total_points ?? 0
   const rankPosition = snapshot?.rank_position ?? null
   const exactScores = snapshot?.exact_scores ?? 0
@@ -116,7 +123,14 @@ export default async function ParticipantPage({ params }: { params: Promise<{ to
           </div>
           {rankPosition && (
             <div className="text-center">
-              <div className="text-2xl font-bold">#{rankPosition}</div>
+              <div className="text-2xl font-bold flex items-center justify-center gap-1">
+                #{rankPosition}
+                {rankChange !== null && rankChange !== 0 && (
+                  <span className={`text-base font-bold ${rankChange > 0 ? "text-green-300" : "text-red-300"}`}>
+                    {rankChange > 0 ? `▲${rankChange}` : `▼${Math.abs(rankChange)}`}
+                  </span>
+                )}
+              </div>
               <div className="text-green-300 text-xs">posição</div>
             </div>
           )}
@@ -261,6 +275,7 @@ export default async function ParticipantPage({ params }: { params: Promise<{ to
               Regras
             </Link>
           </Button>
+          <ShareCard name={participant.name} rank={rankPosition} points={totalPoints} exactScores={exactScores} />
         </div>
       </div>
     </main>
