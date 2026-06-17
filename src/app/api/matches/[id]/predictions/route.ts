@@ -9,7 +9,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 
   const supabase = createAdminClient()
 
-  const [{ data: match, error: matchError }, { data: predictions }, { data: scores }, { data: snapshots }] = await Promise.all([
+  const [{ data: match, error: matchError }, { data: predictions }, { data: scores }, { data: latestSnapDate }] = await Promise.all([
     supabase
       .from("matches")
       .select("id, stage, group_letter, match_number, scheduled_at, status, home_score, away_score, home_team:teams!matches_home_team_id_fkey(id, fifa_code, name), away_team:teams!matches_away_team_id_fkey(id, fifa_code, name)")
@@ -23,13 +23,22 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
       .from("match_scores")
       .select("participant_id, total_points, points_exact_score, points_result, points_goal_diff")
       .eq("match_id", matchId),
-    // Total geral de cada participante (snapshot mais recente do ranking)
     supabase
       .from("ranking_snapshots")
-      .select("participant_id, total_points, snapshot_date")
+      .select("snapshot_date")
       .order("snapshot_date", { ascending: false })
-      .limit(200),
+      .limit(1)
+      .single(),
   ])
+
+  // Busca todos os snapshots do dia mais recente — garante cobertura de todos os
+  // participantes independente do tamanho do histórico (evita limit fixo)
+  const { data: snapshots } = latestSnapDate
+    ? await supabase
+        .from("ranking_snapshots")
+        .select("participant_id, total_points")
+        .eq("snapshot_date", latestSnapDate.snapshot_date)
+    : { data: [] }
 
   if (!match) {
     console.error("[match-predictions] match query failed:", matchError)

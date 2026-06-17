@@ -67,8 +67,8 @@ export default function HistoryPage() {
 
   useEffect(() => {
     Promise.all([
-      fetch("/api/ranking/history").then(r => r.json()),
-      fetch(`/api/ranking`).then(r => r.json()),
+      fetch("/api/ranking/history").then(r => r.ok ? r.json() : { history: [] }),
+      fetch(`/api/ranking`).then(r => r.ok ? r.json() : { ranking: [] }),
     ]).then(([{ history: h }, { ranking: r }]) => {
       setHistory(h ?? [])
       const nameMap: Record<string, string> = {}
@@ -98,13 +98,20 @@ export default function HistoryPage() {
   const participants = [...latestByPid.keys()].sort(
     (a, b) => (latestByPid.get(b)!.total_points - latestByPid.get(a)!.total_points)
   )
+  const participantColors = participants.map((_, i) => colorOf(i))
+
+  const snapsByDate = new Map<string, Snapshot[]>()
+  for (const snap of history) {
+    const list = snapsByDate.get(snap.snapshot_date) ?? []
+    list.push(snap)
+    snapsByDate.set(snap.snapshot_date, list)
+  }
 
   const chartData = dates.map(date => {
     const point: Record<string, string | number | null> = {
-      date: `${date.slice(8, 10)}/${date.slice(5, 7)}`, // DD/MM
+      date: `${date.slice(8, 10)}/${date.slice(5, 7)}`,
     }
-    for (const snap of history) {
-      if (snap.snapshot_date !== date) continue
+    for (const snap of snapsByDate.get(date) ?? []) {
       point[snap.participant_id] = view === "points" ? snap.total_points : snap.rank_position
     }
     return point
@@ -161,10 +168,10 @@ export default function HistoryPage() {
                         key={pid}
                         type="monotone"
                         dataKey={pid}
-                        stroke={colorOf(i)}
+                        stroke={participantColors[i]}
                         strokeWidth={1.5}
                         // Com 1 só dia de dados não há linha — mostra o ponto
-                        dot={chartData.length < 2 ? { r: 3, strokeWidth: 0, fill: colorOf(i) } : false}
+                        dot={chartData.length < 2 ? { r: 3, strokeWidth: 0, fill: participantColors[i] } : false}
                         connectNulls
                       />
                     ))}
@@ -175,7 +182,7 @@ export default function HistoryPage() {
                 <div className="flex flex-wrap gap-x-3 gap-y-1.5 justify-center pt-3 px-2">
                   {participants.map((pid, i) => (
                     <span key={pid} className="flex items-center gap-1 text-[10px] leading-none text-muted-foreground">
-                      <span className="w-2 h-2 rounded-full shrink-0" style={{ background: colorOf(i) }} />
+                      <span className="w-2 h-2 rounded-full shrink-0" style={{ background: participantColors[i] }} />
                       {names[pid] ?? pid.slice(0, 8)}
                     </span>
                   ))}

@@ -16,6 +16,11 @@ interface Participant {
   is_active: boolean
 }
 
+type DateDiff = {
+  match_id: number; home_team: string; away_team: string
+  db_date: string; api_date: string; diff_minutes: number; status: string
+}
+
 export default function AdminDashboard() {
   const router = useRouter()
   const [participants, setParticipants] = useState<Participant[]>([])
@@ -31,10 +36,6 @@ export default function AdminDashboard() {
   const [loading, setLoading] = useState(true)
   const [actionId, setActionId] = useState<string | null>(null)
 
-  type DateDiff = {
-    match_id: number; home_team: string; away_team: string
-    db_date: string; api_date: string; diff_minutes: number; status: string
-  }
   const [dateDiffs, setDateDiffs] = useState<DateDiff[] | null>(null)
   const [checkingDates, setCheckingDates] = useState(false)
   const [fixingDates, setFixingDates] = useState(false)

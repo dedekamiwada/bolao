@@ -55,3 +55,18 @@ export const FD_STATUS_MAP: Record<string, string> = {
   POSTPONED: "POSTPONED",
   CANCELLED: "POSTPONED",
 }
+
+// football-data usa alguns TLAs diferentes dos códigos FIFA do nosso banco
+export const TLA_ALIASES: Record<string, string> = {
+  URY: "URU",
+}
+
+export function buildTlaToId(dbTeams: { id: number; fifa_code: string }[]): Map<string, number> {
+  const map = new Map<string, number>()
+  for (const t of dbTeams) map.set(t.fifa_code.toUpperCase(), t.id)
+  for (const [fdTla, fifaCode] of Object.entries(TLA_ALIASES)) {
+    const id = map.get(fifaCode)
+    if (id) map.set(fdTla, id)
+  }
+  return map
+}

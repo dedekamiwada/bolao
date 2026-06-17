@@ -86,11 +86,12 @@ export function MatchPredictionsModal({ match, isLocked, isFinished, onClose }: 
     setLoading(true)
     try {
       const res = await fetch(`/api/matches/${match.id}/predictions`)
+      if (!res.ok) return
       const data = await res.json()
       setEntries(data.predictions ?? [])
       setProvisional(data.provisional ?? false)
       // Placar mais fresco que o da prop (atualizado pelo sync durante o jogo)
-      if (data.match?.home_score !== null && data.match?.home_score !== undefined) {
+      if (data.match?.home_score != null) {
         setLiveScore({ home: data.match.home_score, away: data.match.away_score })
       }
     } finally {
@@ -114,10 +115,10 @@ export function MatchPredictionsModal({ match, isLocked, isFinished, onClose }: 
 
   // Ordenação: pontos deste jogo (API já manda assim) ou ranking geral do bolão.
   // No geral, o provisório soma o ganho do jogo ao vivo (mesmo valor exibido).
+  const liveBonus = provisional && !matchFinished
   const sortedEntries = sortBy === "match"
     ? entries
     : [...entries].sort((a, b) => {
-        const liveBonus = provisional && !matchFinished
         const totalA = a.overall_points + (liveBonus ? a.total_points ?? 0 : 0)
         const totalB = b.overall_points + (liveBonus ? b.total_points ?? 0 : 0)
         return totalB - totalA || (b.total_points ?? 0) - (a.total_points ?? 0) || a.name.localeCompare(b.name)

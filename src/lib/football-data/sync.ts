@@ -1,12 +1,7 @@
 import { createAdminClient } from "@/lib/supabase/admin"
 import { fetchLiveAndFinishedMatches, fetchAllMatches } from "./client"
-import { FD_STATUS_MAP } from "./types"
+import { FD_STATUS_MAP, buildTlaToId } from "./types"
 import { recalculateMatchScores, updateRankingSnapshots } from "@/lib/scoring/calculate"
-
-// football-data usa alguns TLAs diferentes dos códigos FIFA do nosso banco
-const TLA_ALIASES: Record<string, string> = {
-  URY: "URU", // Uruguai
-}
 
 export async function syncMatches(fullSync = false) {
   const supabase = createAdminClient()
@@ -14,14 +9,7 @@ export async function syncMatches(fullSync = false) {
 
   // ── Build team lookup: tla (from FD API) → our team_id ──────────────────
   const { data: dbTeams } = await supabase.from("teams").select("id, fifa_code")
-  const tlaToId = new Map<string, number>()
-  for (const t of dbTeams ?? []) {
-    tlaToId.set(t.fifa_code.toUpperCase(), t.id)
-  }
-  for (const [fdTla, fifaCode] of Object.entries(TLA_ALIASES)) {
-    const id = tlaToId.get(fifaCode)
-    if (id) tlaToId.set(fdTla, id)
-  }
+  const tlaToId = buildTlaToId(dbTeams ?? [])
 
   // ── Load all our matches for fallback matching ───────────────────────────
   type DbMatch = {

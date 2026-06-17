@@ -2,13 +2,9 @@ import { NextRequest, NextResponse } from "next/server"
 import { requireAdmin } from "@/lib/admin-auth"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { fetchAllMatches } from "@/lib/football-data/client"
+import { buildTlaToId } from "@/lib/football-data/types"
 
 export const maxDuration = 30
-
-// Mesmos aliases do sync.ts para consistência
-const TLA_ALIASES: Record<string, string> = {
-  URY: "URU",
-}
 
 type DbMatch = {
   id: number
@@ -43,14 +39,7 @@ async function buildDiff(): Promise<{ diffs: DateDiff[]; unmatched: number }> {
   ])
 
   const dbMatches = (rawMatches ?? []) as unknown as DbMatch[]
-
-  // TLA → team_id
-  const tlaToId = new Map<string, number>()
-  for (const t of dbTeams ?? []) tlaToId.set(t.fifa_code.toUpperCase(), t.id)
-  for (const [fdTla, fifaCode] of Object.entries(TLA_ALIASES)) {
-    const id = tlaToId.get(fifaCode)
-    if (id) tlaToId.set(fdTla, id)
-  }
+  const tlaToId = buildTlaToId(dbTeams ?? [])
 
   // Lookup maps
   const byExtId = new Map<number, DbMatch>()
@@ -132,16 +121,13 @@ export async function POST(req: NextRequest) {
     }
 
     const supabase = createAdminClient()
-    let updated = 0
 
-    for (const diff of toApply) {
-      const { error: updateError } = await supabase
-        .from("matches")
-        .update({ scheduled_at: diff.api_date })
-        .eq("id", diff.match_id)
-
-      if (!updateError) updated++
-    }
+    const results = await Promise.all(
+      toApply.map(diff =>
+        supabase.from("matches").update({ scheduled_at: diff.api_date }).eq("id", diff.match_id)
+      )
+    )
+    const updated = results.filter(r => !r.error).length
 
     return NextResponse.json({ updated, applied: toApply.map(d => d.match_id) })
   } catch (err) {
