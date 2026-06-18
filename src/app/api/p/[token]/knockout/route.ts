@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { validateParticipant, isPredictionLocked } from "@/lib/participant-auth"
 import { createAdminClient } from "@/lib/supabase/admin"
+import { KO_CUTOFF_KEY } from "@/app/api/admin/deadline-config/route"
 
 export async function GET(
   _req: NextRequest,
@@ -56,19 +57,30 @@ export async function POST(
   const supabase = createAdminClient()
   const matchIds = predictions.map((p: { matchId: number }) => p.matchId)
 
-  const { data: matches } = await supabase
-    .from("matches")
-    .select("id, scheduled_at")
-    .in("id", matchIds)
-    .neq("stage", "GROUP")
+  const allCutoffKeys = Object.values(KO_CUTOFF_KEY)
+
+  const [{ data: matches }, { data: cutoffConfig }, { data: overrides }] = await Promise.all([
+    supabase.from("matches").select("id, stage, scheduled_at").in("id", matchIds).neq("stage", "GROUP"),
+    supabase.from("pool_config").select("key, value").in("key", allCutoffKeys),
+    supabase.from("match_deadline_overrides").select("match_id, close_at").in("match_id", matchIds),
+  ])
 
   if (!matches) return NextResponse.json({ error: "Jogos não encontrados" }, { status: 400 })
+
+  const cfgMap = Object.fromEntries((cutoffConfig ?? []).map(r => [r.key, r.value]))
+  const cutoffForStage = (stage: string) => Number(cfgMap[KO_CUTOFF_KEY[stage]] ?? 15)
+  const overrideMap = new Map((overrides ?? []).map(o => [o.match_id, o.close_at]))
 
   const validPredictions = []
   for (const pred of predictions) {
     const match = matches.find((m) => m.id === pred.matchId)
     if (!match) continue
-    if (isPredictionLocked(match.scheduled_at)) continue
+    // Per-match override takes priority over per-stage cutoff
+    const customClose = overrideMap.get(match.id)
+    const locked = customClose
+      ? Date.now() >= new Date(customClose).getTime()
+      : isPredictionLocked(match.scheduled_at, cutoffForStage(match.stage))
+    if (locked) continue
 
     if (pred.homeScore === undefined || pred.awayScore === undefined || !pred.winnerId) continue
 
