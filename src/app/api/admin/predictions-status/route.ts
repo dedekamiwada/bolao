@@ -23,11 +23,12 @@ export async function GET() {
   if (!participants || !groupMatches) return NextResponse.json({ error: "DB error" }, { status: 500 })
 
   const now = Date.now()
-  const CUTOFF_MS = 15 * 60 * 1000
+  const R1_CUTOFF_MS  = 15 * 60 * 1000
+  const R23_CUTOFF_MS = 10 * 60 * 1000
 
   // Determine which group rounds are currently open for betting
   // Round 1: locks 15 min before round 1's first match
-  // Rounds 2+3: lock 15 min before round 2's first match
+  // Rounds 2+3: lock 10 min before round 2's first match
   const r1Matches = groupMatches.filter(m => getGroupRound(m.match_number) === 1)
   const r2Matches = groupMatches.filter(m => getGroupRound(m.match_number) === 2)
   const r3Matches = groupMatches.filter(m => getGroupRound(m.match_number) === 3)
@@ -37,8 +38,8 @@ export async function GET() {
     return Math.min(...arr.map(m => new Date(m.scheduled_at).getTime()))
   }
 
-  const r1LockTime = r1Matches.length ? firstMatchAt(r1Matches)! - CUTOFF_MS : null
-  const r2LockTime = r2Matches.length ? firstMatchAt(r2Matches)! - CUTOFF_MS : null
+  const r1LockTime = r1Matches.length ? firstMatchAt(r1Matches)! - R1_CUTOFF_MS : null
+  const r2LockTime = r2Matches.length ? firstMatchAt(r2Matches)! - R23_CUTOFF_MS : null
 
   // Windows are MUTUALLY EXCLUSIVE — show the nearest upcoming deadline only.
   // • r1 window:  open while now < r1LockTime
@@ -62,7 +63,7 @@ export async function GET() {
     windowDeadline = new Date(r2LockTime).toISOString()
   } else if (knockoutMatches && knockoutMatches.length > 0) {
     const ko = knockoutMatches[0]
-    const koLock = new Date(ko.scheduled_at).getTime() - CUTOFF_MS
+    const koLock = new Date(ko.scheduled_at).getTime() - R1_CUTOFF_MS
     if (now < koLock) {
       const labels: Record<string, string> = { R32: "16 avos de Final", R16: "Oitavas de Final", QF: "Quartas de Final", SF: "Semifinais", "3RD": "3º Lugar", FINAL: "Final" }
       windowLabel = labels[ko.stage] ?? ko.stage
