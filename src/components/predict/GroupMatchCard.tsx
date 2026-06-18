@@ -7,29 +7,25 @@ import { cn } from "@/lib/utils"
 import { formatDate } from "@/lib/utils"
 import { Clock, Lock, Users } from "lucide-react"
 
-const CUTOFF_MINUTES = 15
-
-// Locks 15 min before the first match of the round (not this specific match)
-function useTimeLock(roundFirstMatchAt: string) {
-  const cutoff = new Date(roundFirstMatchAt).getTime() - CUTOFF_MINUTES * 60 * 1000
-  const [locked, setLocked] = useState(() => Date.now() >= cutoff)
+function useTimeLock(lockTimeMs: number) {
+  const [locked, setLocked] = useState(() => Date.now() >= lockTimeMs)
 
   useEffect(() => {
     if (locked) return
-    const remaining = cutoff - Date.now()
+    const remaining = lockTimeMs - Date.now()
     // eslint-disable-next-line react-hooks/set-state-in-effect
     if (remaining <= 0) { setLocked(true); return }
 
     if (remaining < 5 * 60 * 1000) {
       const interval = setInterval(() => {
-        if (Date.now() >= cutoff) { setLocked(true); clearInterval(interval) }
+        if (Date.now() >= lockTimeMs) { setLocked(true); clearInterval(interval) }
       }, 1000)
       return () => clearInterval(interval)
     } else {
       const timeout = setTimeout(() => setLocked(true), remaining)
       return () => clearTimeout(timeout)
     }
-  }, [cutoff, locked])
+  }, [lockTimeMs, locked])
 
   return locked
 }
@@ -51,19 +47,18 @@ function useNotYetOpen(prevRoundLastMatchAt: string | null): boolean {
   return !open
 }
 
-function Countdown({ roundFirstMatchAt }: { roundFirstMatchAt: string }) {
-  const cutoff = new Date(roundFirstMatchAt).getTime() - CUTOFF_MINUTES * 60 * 1000
-  const [remaining, setRemaining] = useState(() => cutoff - Date.now())
+function Countdown({ lockTimeMs }: { lockTimeMs: number }) {
+  const [remaining, setRemaining] = useState(() => lockTimeMs - Date.now())
 
   useEffect(() => {
     if (remaining <= 0) return
     const interval = setInterval(() => {
-      const diff = cutoff - Date.now()
+      const diff = lockTimeMs - Date.now()
       setRemaining(diff)
       if (diff <= 0) clearInterval(interval)
     }, 1000)
     return () => clearInterval(interval)
-  }, [cutoff]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [lockTimeMs]) // eslint-disable-line react-hooks/exhaustive-deps
 
   if (remaining <= 0) return null
 
@@ -104,7 +99,7 @@ interface GroupMatchCardProps {
   homeTeam: Team | null
   awayTeam: Team | null
   scheduledAt: string
-  roundFirstMatchAt: string
+  lockTimeMs: number
   prevRoundLastMatchAt: string | null
   roundNumber: 1 | 2 | 3
   status: string
@@ -122,7 +117,7 @@ export function GroupMatchCard({
   homeTeam,
   awayTeam,
   scheduledAt,
-  roundFirstMatchAt,
+  lockTimeMs,
   prevRoundLastMatchAt,
   roundNumber,
   status,
@@ -137,7 +132,7 @@ export function GroupMatchCard({
   const [home, setHome] = useState(predictedHomeScore?.toString() ?? "")
   const [away, setAway] = useState(predictedAwayScore?.toString() ?? "")
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const isTimeLocked = useTimeLock(roundFirstMatchAt)
+  const isTimeLocked = useTimeLock(lockTimeMs)
   const isNotYetOpen = useNotYetOpen(prevRoundLastMatchAt)
 
   useEffect(() => {
@@ -183,7 +178,7 @@ export function GroupMatchCard({
               <Lock className="w-3 h-3" /> Encerrado
             </span>
           )}
-          {!isNotYetOpen && !locked && <Countdown roundFirstMatchAt={roundFirstMatchAt} />}
+          {!isNotYetOpen && !locked && <Countdown lockTimeMs={lockTimeMs} />}
           <MatchStatusBadge status={status} />
         </div>
       </div>

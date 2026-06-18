@@ -14,17 +14,20 @@ export async function GET() {
     { data: participants },
     { data: groupMatches },
     { data: knockoutMatches },
+    { data: cutoffConfig },
   ] = await Promise.all([
     supabase.from("participants").select("id, name").eq("is_active", true).order("name"),
     supabase.from("matches").select("id, match_number, scheduled_at, group_letter, status").eq("stage", "GROUP").order("scheduled_at"),
     supabase.from("matches").select("id, stage, scheduled_at, status").neq("stage", "GROUP").in("status", ["SCHEDULED"]).order("scheduled_at").limit(1),
+    supabase.from("pool_config").select("key, value").in("key", ["r1_cutoff_minutes", "r23_cutoff_minutes"]),
   ])
 
   if (!participants || !groupMatches) return NextResponse.json({ error: "DB error" }, { status: 500 })
 
   const now = Date.now()
-  const R1_CUTOFF_MS  = 15 * 60 * 1000
-  const R23_CUTOFF_MS = 10 * 60 * 1000
+  const cfgMap = Object.fromEntries((cutoffConfig ?? []).map(r => [r.key, r.value]))
+  const R1_CUTOFF_MS  = Number(cfgMap["r1_cutoff_minutes"]  ?? 15) * 60 * 1000
+  const R23_CUTOFF_MS = Number(cfgMap["r23_cutoff_minutes"] ?? 10) * 60 * 1000
 
   // Determine which group rounds are currently open for betting
   // Round 1: locks 15 min before round 1's first match

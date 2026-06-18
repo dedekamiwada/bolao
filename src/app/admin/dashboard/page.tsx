@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
-import { Users, RefreshCw, Copy, Check, LogOut, Loader2, Plus, Trash2, Calculator, RotateCcw, AlertCircle, CheckCircle2, CalendarClock } from "lucide-react"
+import { Users, RefreshCw, Copy, Check, LogOut, Loader2, Plus, Trash2, Calculator, RotateCcw, AlertCircle, CheckCircle2, CalendarClock, Timer } from "lucide-react"
 import { MatchResultsEditor } from "@/components/admin/MatchResultsEditor"
 
 interface Participant {
@@ -41,11 +41,93 @@ export default function AdminDashboard() {
   const [fixingDates, setFixingDates] = useState(false)
   const [dateFixMsg, setDateFixMsg] = useState("")
 
+  interface MatchInfo { id: number; match_number: number; group_letter: string; scheduled_at: string; status: string; home_team: { fifa_code: string } | null; away_team: { fifa_code: string } | null }
+  interface MatchOverride { match_id: number; close_at: string; match: MatchInfo | null }
+  interface DeadlineConfig { r1CutoffMinutes: number; r23CutoffMinutes: number; matchOverrides: MatchOverride[]; availableMatches: MatchInfo[] }
+  const [deadlineConfig, setDeadlineConfig] = useState<DeadlineConfig | null>(null)
+  const [deadlineLoading, setDeadlineLoading] = useState(false)
+  const [r1Input, setR1Input] = useState("")
+  const [r23Input, setR23Input] = useState("")
+  const [deadlineMsg, setDeadlineMsg] = useState("")
+  const [savingRound, setSavingRound] = useState<"r1" | "r23" | null>(null)
+  const [newOverrideMatchId, setNewOverrideMatchId] = useState<number | "">("")
+  const [newOverrideCloseAt, setNewOverrideCloseAt] = useState("")
+  const [savingOverride, setSavingOverride] = useState(false)
+  const [removingOverride, setRemovingOverride] = useState<number | null>(null)
+
   interface PredStatus { id: string; name: string; done: number; total: number; complete: boolean; missing: number }
   const [predStatus, setPredStatus] = useState<{ windowLabel: string; windowDeadline: string | null; statuses: PredStatus[] } | null>(null)
   const [predStatusLoading, setPredStatusLoading] = useState(false)
 
-  useEffect(() => { loadParticipants(); loadPredStatus() }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { loadParticipants(); loadPredStatus(); loadDeadlineConfig() }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function loadDeadlineConfig() {
+    setDeadlineLoading(true)
+    const res = await fetch("/api/admin/deadline-config")
+    if (res.ok) {
+      const data = await res.json()
+      setDeadlineConfig(data)
+      setR1Input(String(data.r1CutoffMinutes))
+      setR23Input(String(data.r23CutoffMinutes))
+    }
+    setDeadlineLoading(false)
+  }
+
+  async function saveRoundCutoff(round: "r1" | "r23") {
+    const minutes = round === "r1" ? Number(r1Input) : Number(r23Input)
+    if (isNaN(minutes)) return
+    setSavingRound(round)
+    setDeadlineMsg("")
+    const res = await fetch("/api/admin/deadline-config", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ type: "round", round, minutes }),
+    })
+    setSavingRound(null)
+    if (res.ok) {
+      setDeadlineMsg(`✓ Cutoff da ${round === "r1" ? "Rodada 1" : "Rodadas 2+3"} atualizado para ${minutes} min.`)
+      loadDeadlineConfig()
+    } else {
+      setDeadlineMsg("❌ Erro ao salvar.")
+    }
+  }
+
+  async function saveMatchOverride() {
+    if (!newOverrideMatchId || !newOverrideCloseAt) return
+    setSavingOverride(true)
+    setDeadlineMsg("")
+    const res = await fetch("/api/admin/deadline-config", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ type: "match_override", matchId: newOverrideMatchId, closeAt: new Date(newOverrideCloseAt).toISOString() }),
+    })
+    setSavingOverride(false)
+    if (res.ok) {
+      setDeadlineMsg("✓ Prazo específico salvo.")
+      setNewOverrideMatchId("")
+      setNewOverrideCloseAt("")
+      loadDeadlineConfig()
+    } else {
+      setDeadlineMsg("❌ Erro ao salvar.")
+    }
+  }
+
+  async function removeMatchOverride(matchId: number) {
+    setRemovingOverride(matchId)
+    setDeadlineMsg("")
+    const res = await fetch("/api/admin/deadline-config", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ type: "remove_override", matchId }),
+    })
+    setRemovingOverride(null)
+    if (res.ok) {
+      setDeadlineMsg("✓ Extensão removida.")
+      loadDeadlineConfig()
+    } else {
+      setDeadlineMsg("❌ Erro ao remover.")
+    }
+  }
 
   async function loadPredStatus() {
     setPredStatusLoading(true)
@@ -296,6 +378,132 @@ export default function AdminDashboard() {
             )}
 
             {dateFixMsg && <p className="text-xs text-muted-foreground">{dateFixMsg}</p>}
+          </CardContent>
+        </Card>
+
+        {/* Prazo de Palpites */}
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm flex items-center justify-between gap-2">
+              <span className="flex items-center gap-2">
+                <Timer className="w-4 h-4" /> Prazo de Palpites
+              </span>
+              <button onClick={loadDeadlineConfig} aria-label="Atualizar" className="text-muted-foreground hover:text-foreground">
+                <RefreshCw className={`w-3.5 h-3.5 ${deadlineLoading ? "animate-spin" : ""}`} />
+              </button>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="pt-0 space-y-4">
+            {deadlineLoading && !deadlineConfig ? (
+              <div className="flex justify-center py-4"><Loader2 className="w-5 h-5 animate-spin text-muted-foreground" /></div>
+            ) : (
+              <>
+                {/* Round cutoffs */}
+                <div className="space-y-2">
+                  <p className="text-xs text-muted-foreground font-medium">Minutos antes do 1º jogo para fechar palpites</p>
+                  <div className="flex flex-col gap-2">
+                    {(["r1", "r23"] as const).map(round => (
+                      <div key={round} className="flex items-center gap-2">
+                        <span className="text-xs w-28 shrink-0 text-muted-foreground">
+                          {round === "r1" ? "Rodada 1" : "Rodadas 2 e 3"}
+                        </span>
+                        <Input
+                          type="number"
+                          className="h-8 w-20 text-sm"
+                          value={round === "r1" ? r1Input : r23Input}
+                          onChange={e => round === "r1" ? setR1Input(e.target.value) : setR23Input(e.target.value)}
+                        />
+                        <span className="text-xs text-muted-foreground">min</span>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-8 text-xs"
+                          disabled={savingRound === round}
+                          onClick={() => saveRoundCutoff(round)}
+                        >
+                          {savingRound === round ? <Loader2 className="w-3 h-3 animate-spin" /> : "Salvar"}
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="text-[11px] text-muted-foreground">Use valores negativos para manter aberto após o início dos jogos (ex: -30 = fecha 30 min depois do 1º jogo).</p>
+                </div>
+
+                {/* Existing match overrides */}
+                {deadlineConfig && deadlineConfig.matchOverrides.length > 0 && (
+                  <div className="space-y-2">
+                    <p className="text-xs font-medium text-muted-foreground">Prazos específicos ativos</p>
+                    <div className="divide-y rounded border overflow-hidden text-xs">
+                      {deadlineConfig.matchOverrides.map(o => (
+                        <div key={o.match_id} className="flex items-center justify-between px-3 py-2 gap-2 bg-card">
+                          <div>
+                            <span className="font-medium">
+                              {o.match?.home_team?.fifa_code ?? "?"} × {o.match?.away_team?.fifa_code ?? "?"}
+                            </span>
+                            <span className="text-muted-foreground ml-1.5">
+                              Grupo {o.match?.group_letter}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-2 shrink-0">
+                            <span className="text-muted-foreground">
+                              até {new Date(o.close_at).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })}
+                            </span>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
+                              disabled={removingOverride === o.match_id}
+                              onClick={() => removeMatchOverride(o.match_id)}
+                            >
+                              {removingOverride === o.match_id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Trash2 className="w-3 h-3" />}
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Add new match override */}
+                {deadlineConfig && deadlineConfig.availableMatches.length > 0 && (
+                  <div className="space-y-2">
+                    <p className="text-xs font-medium text-muted-foreground">Adicionar prazo por jogo</p>
+                    <div className="flex flex-col gap-2">
+                      <select
+                        value={newOverrideMatchId}
+                        onChange={e => setNewOverrideMatchId(e.target.value === "" ? "" : Number(e.target.value))}
+                        className="text-xs border rounded px-2 py-1.5 bg-background w-full"
+                      >
+                        <option value="">Selecionar jogo…</option>
+                        {deadlineConfig.availableMatches.map(m => (
+                          <option key={m.id} value={m.id}>
+                            {m.home_team?.fifa_code ?? "?"} × {m.away_team?.fifa_code ?? "?"} — Grupo {m.group_letter} ({new Date(m.scheduled_at).toLocaleDateString("pt-BR")})
+                          </option>
+                        ))}
+                      </select>
+                      <div className="flex items-center gap-2">
+                        <Input
+                          type="datetime-local"
+                          className="h-8 text-xs flex-1"
+                          value={newOverrideCloseAt}
+                          onChange={e => setNewOverrideCloseAt(e.target.value)}
+                        />
+                        <Button
+                          size="sm"
+                          className="h-8 text-xs bg-green-700 hover:bg-green-800 text-white shrink-0"
+                          disabled={savingOverride || !newOverrideMatchId || !newOverrideCloseAt}
+                          onClick={saveMatchOverride}
+                        >
+                          {savingOverride ? <Loader2 className="w-3 h-3 animate-spin" /> : "Salvar"}
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {deadlineMsg && <p className="text-xs text-muted-foreground">{deadlineMsg}</p>}
+              </>
+            )}
           </CardContent>
         </Card>
 

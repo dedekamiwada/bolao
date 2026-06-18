@@ -14,7 +14,7 @@ export async function GET(
 
   const supabase = createAdminClient()
 
-  const [{ data: predictions }, { data: matches }] = await Promise.all([
+  const [{ data: predictions }, { data: matches }, { data: cutoffConfig }, { data: overrides }] = await Promise.all([
     supabase
       .from("group_predictions")
       .select("match_id, home_score, away_score, is_locked")
@@ -24,9 +24,20 @@ export async function GET(
       .select("id, match_number, group_letter, home_team_id, away_team_id, scheduled_at, status, home_score, away_score, home_team:teams!matches_home_team_id_fkey(id, fifa_code, name, flag_url), away_team:teams!matches_away_team_id_fkey(id, fifa_code, name, flag_url)")
       .eq("stage", "GROUP")
       .order("scheduled_at", { ascending: true }),
+    supabase.from("pool_config").select("key, value").in("key", ["r1_cutoff_minutes", "r23_cutoff_minutes"]),
+    supabase.from("match_deadline_overrides").select("match_id, close_at"),
   ])
 
-  return NextResponse.json({ predictions: predictions ?? [], matches: matches ?? [] })
+  const cfgMap = Object.fromEntries((cutoffConfig ?? []).map(r => [r.key, r.value]))
+  const cutoffMinutes = {
+    r1:  Number(cfgMap["r1_cutoff_minutes"]  ?? 15),
+    r23: Number(cfgMap["r23_cutoff_minutes"] ?? 10),
+  }
+  const matchOverrides: Record<number, string> = Object.fromEntries(
+    (overrides ?? []).map(o => [o.match_id, o.close_at])
+  )
+
+  return NextResponse.json({ predictions: predictions ?? [], matches: matches ?? [], cutoffMinutes, matchOverrides })
 }
 
 export async function POST(
@@ -56,13 +67,25 @@ export async function POST(
 
   if (!predMatches) return NextResponse.json({ error: "Jogos não encontrados" }, { status: 400 })
 
-  // Fetch ALL group matches to compute GLOBAL round boundaries (not just the involved groups)
-  const { data: allGroupMatches } = await supabase
-    .from("matches")
-    .select("id, match_number, group_letter, scheduled_at")
-    .eq("stage", "GROUP")
+  // Fetch ALL group matches, cutoff config, and match overrides in parallel
+  const [
+    { data: allGroupMatches },
+    { data: cutoffConfig },
+    { data: deadlineOverrides },
+  ] = await Promise.all([
+    supabase.from("matches").select("id, match_number, group_letter, scheduled_at").eq("stage", "GROUP"),
+    supabase.from("pool_config").select("key, value").in("key", ["r1_cutoff_minutes", "r23_cutoff_minutes"]),
+    supabase.from("match_deadline_overrides").select("match_id, close_at"),
+  ])
 
   if (!allGroupMatches) return NextResponse.json({ error: "Erro ao buscar rodadas" }, { status: 500 })
+
+  const cfgMap = Object.fromEntries((cutoffConfig ?? []).map(r => [r.key, r.value]))
+  const r1Cutoff  = Number(cfgMap["r1_cutoff_minutes"]  ?? 15)
+  const r23Cutoff = Number(cfgMap["r23_cutoff_minutes"] ?? 10)
+  const overrideMap = new Map<number, number>(
+    (deadlineOverrides ?? []).map(o => [o.match_id, new Date(o.close_at).getTime()])
+  )
 
   // Validate each prediction using GLOBAL round-based lock logic
   const validPredictions = []
@@ -70,8 +93,7 @@ export async function POST(
     const match = predMatches.find((m: { id: number }) => m.id === pred.matchId)
     if (!match) continue
 
-    // Pass ALL group matches so round boundaries are computed globally
-    if (!isGroupMatchBettable(match, allGroupMatches)) continue // silently skip locked/not-open
+    if (!isGroupMatchBettable(match, allGroupMatches, r1Cutoff, r23Cutoff, overrideMap)) continue // silently skip locked/not-open
 
     if (pred.homeScore < 0 || pred.awayScore < 0) continue
 
