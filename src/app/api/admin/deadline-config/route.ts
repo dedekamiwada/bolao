@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { requireAdmin } from "@/lib/admin-auth"
+import { getGroupRound } from "@/lib/group-rounds"
 
 export async function GET() {
   const { error: authError } = await requireAdmin()
@@ -33,9 +34,9 @@ export async function GET() {
   }))
 
   // Upcoming scheduled matches without an override — offered for new overrides
-  const availableMatches = (groupMatches ?? []).filter(
-    m => m.status === "SCHEDULED" && !overrideMatchIds.has(m.id)
-  )
+  const availableMatches = (groupMatches ?? [])
+    .filter(m => m.status === "SCHEDULED" && !overrideMatchIds.has(m.id))
+    .map(m => ({ ...m, round: getGroupRound(m.match_number) as 1 | 2 | 3 }))
 
   return NextResponse.json({ r1CutoffMinutes, r23CutoffMinutes, matchOverrides, availableMatches })
 }

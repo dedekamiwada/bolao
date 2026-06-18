@@ -41,7 +41,7 @@ export default function AdminDashboard() {
   const [fixingDates, setFixingDates] = useState(false)
   const [dateFixMsg, setDateFixMsg] = useState("")
 
-  interface MatchInfo { id: number; match_number: number; group_letter: string; scheduled_at: string; status: string; home_team: { fifa_code: string } | null; away_team: { fifa_code: string } | null }
+  interface MatchInfo { id: number; match_number: number; group_letter: string; scheduled_at: string; status: string; round?: 1 | 2 | 3; home_team: { fifa_code: string } | null; away_team: { fifa_code: string } | null }
   interface MatchOverride { match_id: number; close_at: string; match: MatchInfo | null }
   interface DeadlineConfig { r1CutoffMinutes: number; r23CutoffMinutes: number; matchOverrides: MatchOverride[]; availableMatches: MatchInfo[] }
   const [deadlineConfig, setDeadlineConfig] = useState<DeadlineConfig | null>(null)
@@ -50,7 +50,7 @@ export default function AdminDashboard() {
   const [r23Input, setR23Input] = useState("")
   const [deadlineMsg, setDeadlineMsg] = useState("")
   const [savingRound, setSavingRound] = useState<"r1" | "r23" | null>(null)
-  const [newOverrideMatchId, setNewOverrideMatchId] = useState<number | "">("")
+  const [selectedMatchIds, setSelectedMatchIds] = useState<Set<number>>(new Set())
   const [newOverrideCloseAt, setNewOverrideCloseAt] = useState("")
   const [savingOverride, setSavingOverride] = useState(false)
   const [removingOverride, setRemovingOverride] = useState<number | null>(null)
@@ -93,22 +93,28 @@ export default function AdminDashboard() {
   }
 
   async function saveMatchOverride() {
-    if (!newOverrideMatchId || !newOverrideCloseAt) return
+    if (selectedMatchIds.size === 0 || !newOverrideCloseAt) return
     setSavingOverride(true)
     setDeadlineMsg("")
-    const res = await fetch("/api/admin/deadline-config", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ type: "match_override", matchId: newOverrideMatchId, closeAt: new Date(newOverrideCloseAt).toISOString() }),
-    })
+    const closeAt = new Date(newOverrideCloseAt).toISOString()
+    const results = await Promise.all(
+      [...selectedMatchIds].map(matchId =>
+        fetch("/api/admin/deadline-config", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ type: "match_override", matchId, closeAt }),
+        })
+      )
+    )
     setSavingOverride(false)
-    if (res.ok) {
-      setDeadlineMsg("✓ Prazo específico salvo.")
-      setNewOverrideMatchId("")
+    const failed = results.filter(r => !r.ok).length
+    if (failed === 0) {
+      setDeadlineMsg(`✓ Prazo salvo para ${selectedMatchIds.size} jogo${selectedMatchIds.size > 1 ? "s" : ""}.`)
+      setSelectedMatchIds(new Set())
       setNewOverrideCloseAt("")
       loadDeadlineConfig()
     } else {
-      setDeadlineMsg("❌ Erro ao salvar.")
+      setDeadlineMsg(`❌ ${failed} jogo(s) falharam ao salvar.`)
     }
   }
 
@@ -465,22 +471,113 @@ export default function AdminDashboard() {
                 )}
 
                 {/* Add new match override */}
-                {deadlineConfig && deadlineConfig.availableMatches.length > 0 && (
-                  <div className="space-y-2">
-                    <p className="text-xs font-medium text-muted-foreground">Adicionar prazo por jogo</p>
-                    <div className="flex flex-col gap-2">
-                      <select
-                        value={newOverrideMatchId}
-                        onChange={e => setNewOverrideMatchId(e.target.value === "" ? "" : Number(e.target.value))}
-                        className="text-xs border rounded px-2 py-1.5 bg-background w-full"
-                      >
-                        <option value="">Selecionar jogo…</option>
-                        {deadlineConfig.availableMatches.map(m => (
-                          <option key={m.id} value={m.id}>
-                            {m.home_team?.fifa_code ?? "?"} × {m.away_team?.fifa_code ?? "?"} — Grupo {m.group_letter} ({new Date(m.scheduled_at).toLocaleDateString("pt-BR")})
-                          </option>
+                {deadlineConfig && deadlineConfig.availableMatches.length > 0 && (() => {
+                  const matches = deadlineConfig.availableMatches
+                  // group by round (match_number ≤ 2*groups → R1; ≤ 4*groups → R2; else R3)
+                  // use match_number ranges: R1 ≤ 16*2=32 no — just use modulo pattern
+                  // match_number within group: odd positions are R1, then R2, R3
+                  // Actually group-rounds logic: match_number ≤ 2 → R1, ≤ 4 → R2, else R3 per group
+                  // But global match_number goes 1..96 across all groups
+                  // We stored group_letter; within each group match_number repeats 1-6
+                  // Use same getGroupRound logic: match_number % 6 tells round within group? No.
+                  // The field is global match_number. Use: ≤32 = R1 (16 groups × 2), ≤64 = R2, >64 = R3? No, 12 groups × 4 = 48 matches for R1+R2.
+                  // Actually from group-rounds.ts: getGroupRound(n): n≤2→1, n≤4→2, else 3
+                  // But this is per-group match_number (1-6). The matches here have a global match_number.
+                  // Let's group by scheduled_at date buckets instead: first 1/3 of dates = R1, etc.
+                  // Simplest: group by group_letter, then within each group match_number 1-2 = R1, 3-4 = R2, 5-6 = R3
+                  // But we only have global match_number here, not per-group.
+                  // Let's just sort by scheduled_at and split into thirds, or use group_letter grouping.
+                  // Actually — the MatchInfo has match_number as global. Let's derive round from date quartiles.
+                  // Easiest fix: add round info to availableMatches in the API. But for now let's bucket by date.
+                  // All R1 matches happen in the first ~4 days, R2 in the next ~4, R3 in the last ~4.
+                  // We'll group them by showing round headers based on sorted date chunks.
+                  // Actually let's just compute: sort matches by scheduled_at, split into 3 equal-ish groups.
+                  // 12 groups × 2 matches/round = 24 per round. With 48 total available (if none have overrides).
+
+                  // Compute round from global match_number: group has 6 matches numbered locally 1-6.
+                  // Global match numbers are assigned sequentially across groups.
+                  // 12 groups × 2 = 24 R1 matches (global 1-24), 24 R2 (25-48), 24 R3 (49-72)? Not necessarily.
+                  // Safest: sort by scheduled_at, take first third = R1, second = R2, third = R3.
+                  // OR: expose roundNumber from API. Let me just derive it here from sorted order.
+
+                  const sorted = [...matches].sort((a, b) => new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime())
+
+                  const byRound: Record<1 | 2 | 3, typeof matches> = { 1: [], 2: [], 3: [] }
+                  sorted.forEach(m => {
+                    const r = (m.round ?? 1) as 1 | 2 | 3
+                    byRound[r].push(m)
+                  })
+
+                  const roundIds = (r: 1 | 2 | 3) => new Set(byRound[r].map(m => m.id))
+                  const allSelectedInRound = (r: 1 | 2 | 3) => byRound[r].every(m => selectedMatchIds.has(m.id))
+
+                  function toggleRound(r: 1 | 2 | 3) {
+                    setSelectedMatchIds(prev => {
+                      const next = new Set(prev)
+                      if (allSelectedInRound(r)) {
+                        roundIds(r).forEach(id => next.delete(id))
+                      } else {
+                        roundIds(r).forEach(id => next.add(id))
+                      }
+                      return next
+                    })
+                  }
+
+                  function toggleMatch(id: number) {
+                    setSelectedMatchIds(prev => {
+                      const next = new Set(prev)
+                      next.has(id) ? next.delete(id) : next.add(id)
+                      return next
+                    })
+                  }
+
+                  return (
+                    <div className="space-y-2">
+                      <p className="text-xs font-medium text-muted-foreground">Adicionar prazo por jogo</p>
+
+                      {/* Round quick-select buttons */}
+                      <div className="flex gap-1.5">
+                        {([1, 2, 3] as const).filter(r => byRound[r].length > 0).map(r => (
+                          <button
+                            key={r}
+                            onClick={() => toggleRound(r)}
+                            className={`text-xs px-2 py-1 rounded border transition-colors ${
+                              allSelectedInRound(r)
+                                ? "bg-green-700 text-white border-green-700"
+                                : "bg-background text-muted-foreground border-border hover:bg-muted"
+                            }`}
+                          >
+                            Rodada {r} ({byRound[r].length})
+                          </button>
                         ))}
-                      </select>
+                        {selectedMatchIds.size > 0 && (
+                          <button
+                            onClick={() => setSelectedMatchIds(new Set())}
+                            className="text-xs px-2 py-1 rounded border border-border text-muted-foreground hover:bg-muted ml-auto"
+                          >
+                            Limpar
+                          </button>
+                        )}
+                      </div>
+
+                      {/* Match checkboxes */}
+                      <div className="rounded border divide-y max-h-48 overflow-y-auto text-xs">
+                        {sorted.map(m => (
+                          <label key={m.id} className="flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-muted/50">
+                            <input
+                              type="checkbox"
+                              checked={selectedMatchIds.has(m.id)}
+                              onChange={() => toggleMatch(m.id)}
+                              className="rounded"
+                            />
+                            <span className="font-medium">{m.home_team?.fifa_code ?? "?"} × {m.away_team?.fifa_code ?? "?"}</span>
+                            <span className="text-muted-foreground">Grupo {m.group_letter}</span>
+                            <span className="text-muted-foreground ml-auto">{new Date(m.scheduled_at).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })}</span>
+                          </label>
+                        ))}
+                      </div>
+
+                      {/* Date + save */}
                       <div className="flex items-center gap-2">
                         <Input
                           type="datetime-local"
@@ -491,15 +588,17 @@ export default function AdminDashboard() {
                         <Button
                           size="sm"
                           className="h-8 text-xs bg-green-700 hover:bg-green-800 text-white shrink-0"
-                          disabled={savingOverride || !newOverrideMatchId || !newOverrideCloseAt}
+                          disabled={savingOverride || selectedMatchIds.size === 0 || !newOverrideCloseAt}
                           onClick={saveMatchOverride}
                         >
-                          {savingOverride ? <Loader2 className="w-3 h-3 animate-spin" /> : "Salvar"}
+                          {savingOverride
+                            ? <Loader2 className="w-3 h-3 animate-spin" />
+                            : `Salvar${selectedMatchIds.size > 0 ? ` (${selectedMatchIds.size})` : ""}`}
                         </Button>
                       </div>
                     </div>
-                  </div>
-                )}
+                  )
+                })()}
 
                 {deadlineMsg && <p className="text-xs text-muted-foreground">{deadlineMsg}</p>}
               </>
