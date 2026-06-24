@@ -5,6 +5,7 @@ export function getGroupRound(matchNumber: number): 1 | 2 | 3 {
 }
 
 export interface RoundBoundaryMatch {
+  id?: number
   match_number: number
   scheduled_at: string
 }
@@ -29,19 +30,27 @@ export function getRoundLastMatchAt(groupMatches: RoundBoundaryMatch[], round: 1
 // Rules:
 //   • All rounds are open for betting from day one (no waiting for previous rounds).
 //   • Round 1 locks 15 min before round 1's first match.
-//   • Rounds 2 and 3 lock together: 15 min before round 2's first match.
+//   • Rounds 2 and 3 lock together: 10 min before round 2's first match.
+//   • A per-match override (match.id → close_at epoch ms) takes full priority.
 export function isGroupMatchBettable(
   match: RoundBoundaryMatch,
   groupMatches: RoundBoundaryMatch[],
-  cutoffMinutes = 15
+  cutoffMinutesR1 = 15,
+  cutoffMinutesR23 = 10,
+  matchOverrides?: Map<number, number>  // match.id → close_at epoch ms
 ): boolean {
-  const round = getGroupRound(match.match_number)
   const now = Date.now()
 
-  // Determine which round's first-match time controls the lock for this round
+  // Per-match override takes full priority over round logic
+  if (match.id !== undefined && matchOverrides?.has(match.id)) {
+    return now < matchOverrides.get(match.id)!
+  }
+
+  const round = getGroupRound(match.match_number)
   const lockRound: 1 | 2 | 3 = round >= 2 ? 2 : 1
   const lockRoundFirstMatchAt = getRoundFirstMatchAt(groupMatches, lockRound)
-  const lockTime = new Date(lockRoundFirstMatchAt).getTime() - cutoffMinutes * 60 * 1000
+  const cutoff = lockRound === 1 ? cutoffMinutesR1 : cutoffMinutesR23
+  const lockTime = new Date(lockRoundFirstMatchAt).getTime() - cutoff * 60 * 1000
 
   return now < lockTime
 }

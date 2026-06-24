@@ -44,22 +44,20 @@ interface Prediction {
 /** Info computed globally (same for every match in the same round number) */
 interface RoundInfo {
   roundNumber: 1 | 2 | 3
-  roundFirstMatchAt: string   // earliest scheduled_at in this global round → determines lock time
-  prevRoundLastMatchAt: string | null // latest scheduled_at in the previous global round → determines when this round opens
+  lockTimeMs: number           // epoch ms when this match's betting window closes
+  prevRoundLastMatchAt: string | null
 }
 
 type ViewMode = "group" | "round" | "date"
 
-const CUTOFF_MINUTES = 15
-
 // ─── Pure helpers (no React) ─────────────────────────────────────────────────
 
-function roundLockTime(roundFirstMatchAt: string): number {
-  return new Date(roundFirstMatchAt).getTime() - CUTOFF_MINUTES * 60 * 1000
+function roundLockTime(roundFirstMatchAt: string, cutoffMinutes: number): number {
+  return new Date(roundFirstMatchAt).getTime() - cutoffMinutes * 60 * 1000
 }
 
-function isRoundLocked(roundFirstMatchAt: string, now: number): boolean {
-  return now >= roundLockTime(roundFirstMatchAt)
+function isRoundLockedMs(lockTimeMs: number, now: number): boolean {
+  return now >= lockTimeMs
 }
 
 function isRoundNotYetOpen(prevRoundLastMatchAt: string | null, now: number): boolean {
@@ -91,14 +89,14 @@ function formatMatchDate(scheduledAt: string): string {
 // ─── Small display component for round status badge ─────────────────────────
 
 function RoundStatusBadge({
-  roundNumber, roundFirstMatchAt, prevRoundLastMatchAt, now,
+  roundNumber, lockTimeMs, prevRoundLastMatchAt, now,
 }: {
   roundNumber: 1 | 2 | 3
-  roundFirstMatchAt: string
+  lockTimeMs: number
   prevRoundLastMatchAt: string | null
   now: number
 }) {
-  const locked = isRoundLocked(roundFirstMatchAt, now)
+  const locked = isRoundLockedMs(lockTimeMs, now)
   const notYetOpen = isRoundNotYetOpen(prevRoundLastMatchAt, now)
 
   if (locked) {
@@ -115,7 +113,7 @@ function RoundStatusBadge({
       </span>
     )
   }
-  const remaining = Math.max(0, roundLockTime(roundFirstMatchAt) - now)
+  const remaining = Math.max(0, lockTimeMs - now)
   return (
     <span className="text-xs text-green-600 font-medium">
       Aberta · fecha em {formatRemainingTime(remaining)}
@@ -132,6 +130,8 @@ export default function PredictPage() {
   const [matches, setMatches] = useState<Match[]>([])
   const [predictions, setPredictions] = useState<Map<number, { home: number; away: number }>>(new Map())
   const [lockedMatches, setLockedMatches] = useState<Set<number>>(new Set())
+  const [cutoffMinutes, setCutoffMinutes] = useState<{ r1: number; r23: number }>({ r1: 15, r23: 10 })
+  const [matchOverrides, setMatchOverrides] = useState<Map<number, number>>(new Map())
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [saveMsg, setSaveMsg] = useState("")
@@ -152,8 +152,16 @@ export default function PredictPage() {
   useEffect(() => {
     fetch(`/api/p/${token}/predictions`)
       .then(r => r.json())
-      .then(({ matches: m, predictions: p }) => {
+      .then(({ matches: m, predictions: p, cutoffMinutes: cfg, matchOverrides: overrides }) => {
         setMatches(m ?? [])
+        if (cfg) setCutoffMinutes(cfg)
+        if (overrides) {
+          setMatchOverrides(new Map(
+            Object.entries(overrides as Record<string, string>).map(([id, closeAt]) => [
+              Number(id), new Date(closeAt).getTime()
+            ])
+          ))
+        }
         const predMap = new Map<number, { home: number; away: number }>()
         const locked = new Set<number>()
         ;(p ?? []).forEach((pred: Prediction) => {
@@ -189,26 +197,38 @@ export default function PredictPage() {
     return result
   }, [matches])
 
-  // Per-match round info (pointing to the global boundaries)
-  // Lock rule: round 1 locks on its own firstMatchAt; rounds 2+3 lock on round 2's firstMatchAt.
-  // Open rule: all rounds are open from day one — prevRoundLastMatchAt is always null.
+  // Per-match round info including computed lockTimeMs
+  // Lock rule: round 1 locks cutoffMinutes.r1 before round 1's first match;
+  //            rounds 2+3 lock cutoffMinutes.r23 before round 2's first match.
+  //            Per-match overrides take full priority.
   const matchRoundInfo = useMemo(() => {
     const info = new Map<number, RoundInfo>()
+    const r1boundary = globalRoundBoundaries.get(1)
     const r2boundary = globalRoundBoundaries.get(2)
     for (const match of matches) {
       const round = getGroupRound(match.match_number)
       const boundary = globalRoundBoundaries.get(round)
       if (!boundary) continue
-      // Rounds 2 and 3 use round 2's firstMatchAt as the lock trigger
-      const lockFirstMatchAt = round >= 2 ? (r2boundary?.firstMatchAt ?? boundary.firstMatchAt) : boundary.firstMatchAt
+
+      let lockTimeMs: number
+      if (matchOverrides.has(match.id)) {
+        lockTimeMs = matchOverrides.get(match.id)!
+      } else if (round >= 2) {
+        const lockAt = r2boundary?.firstMatchAt ?? boundary.firstMatchAt
+        lockTimeMs = roundLockTime(lockAt, cutoffMinutes.r23)
+      } else {
+        const lockAt = r1boundary?.firstMatchAt ?? boundary.firstMatchAt
+        lockTimeMs = roundLockTime(lockAt, cutoffMinutes.r1)
+      }
+
       info.set(match.id, {
         roundNumber: round,
-        roundFirstMatchAt: lockFirstMatchAt,
-        prevRoundLastMatchAt: null, // no "waiting for previous round" — all rounds open immediately
+        lockTimeMs,
+        prevRoundLastMatchAt: null,
       })
     }
     return info
-  }, [matches, globalRoundBoundaries])
+  }, [matches, globalRoundBoundaries, cutoffMinutes, matchOverrides])
 
   // ─── Save ──────────────────────────────────────────────────────────────────
   async function handleSave() {
@@ -219,7 +239,7 @@ export default function PredictPage() {
         if (lockedMatches.has(id)) return false
         const info = matchRoundInfo.get(id)
         if (!info) return false
-        if (isRoundLocked(info.roundFirstMatchAt, Date.now())) return false
+        if (isRoundLockedMs(info.lockTimeMs, Date.now())) return false
         if (isRoundNotYetOpen(info.prevRoundLastMatchAt, Date.now())) return false
         return true
       })
@@ -354,11 +374,11 @@ export default function PredictPage() {
     if (predictions.has(m.id) || m.status !== "SCHEDULED") return false
     const info = matchRoundInfo.get(m.id)
     if (!info) return false
-    return !isRoundLocked(info.roundFirstMatchAt, now) && !isRoundNotYetOpen(info.prevRoundLastMatchAt, now)
+    return !isRoundLockedMs(info.lockTimeMs, now) && !isRoundNotYetOpen(info.prevRoundLastMatchAt, now)
   }).length
 
   // Helper to render a GroupMatchCard given a match
-  function renderCard(m: Match, roundFirstMatchAtOverride?: string) {
+  function renderCard(m: Match) {
     const info = matchRoundInfo.get(m.id)
     if (!info) return null
     return (
@@ -368,7 +388,7 @@ export default function PredictPage() {
         homeTeam={m.home_team}
         awayTeam={m.away_team}
         scheduledAt={m.scheduled_at}
-        roundFirstMatchAt={roundFirstMatchAtOverride ?? info.roundFirstMatchAt}
+        lockTimeMs={info.lockTimeMs}
         prevRoundLastMatchAt={info.prevRoundLastMatchAt}
         roundNumber={info.roundNumber}
         status={m.status}
@@ -437,10 +457,15 @@ export default function PredictPage() {
             <div className="flex gap-2">
               {([null, 1, 2, 3] as const).map(r => {
                 const label = r === null ? "Todas" : `Rodada ${r}`
-                const boundary = r !== null ? globalRoundBoundaries.get(r) : undefined
+                const r1boundary = globalRoundBoundaries.get(1)
                 const r2boundary = globalRoundBoundaries.get(2)
-                const lockFirstMatchAt = boundary ? (r !== null && r >= 2 ? (r2boundary?.firstMatchAt ?? boundary.firstMatchAt) : boundary.firstMatchAt) : undefined
-                const locked = lockFirstMatchAt ? isRoundLocked(lockFirstMatchAt, now) : false
+                const boundary = r !== null ? globalRoundBoundaries.get(r) : undefined
+                const lockMs = boundary
+                  ? r !== null && r >= 2
+                    ? roundLockTime(r2boundary?.firstMatchAt ?? boundary.firstMatchAt, cutoffMinutes.r23)
+                    : roundLockTime(r1boundary?.firstMatchAt ?? boundary.firstMatchAt, cutoffMinutes.r1)
+                  : undefined
+                const locked = lockMs !== undefined ? isRoundLockedMs(lockMs, now) : false
                 const notYetOpen = false // all rounds open from day one
                 const isActive = selectedRound === r
                 return (
@@ -469,10 +494,13 @@ export default function PredictPage() {
             {([1, 2, 3] as const).filter(r => selectedRound === null || selectedRound === r).map(roundNum => {
               const boundary = globalRoundBoundaries.get(roundNum)
               if (!boundary) return null
+              const r1b = globalRoundBoundaries.get(1)
               const r2b = globalRoundBoundaries.get(2)
               const lockFirstMatchAt = roundNum >= 2 ? (r2b?.firstMatchAt ?? boundary.firstMatchAt) : boundary.firstMatchAt
+              const roundCutoff = roundNum >= 2 ? cutoffMinutes.r23 : cutoffMinutes.r1
+              const roundLockMs = roundLockTime(lockFirstMatchAt, roundCutoff)
               const prevLastMatchAt = null // all rounds open from day one
-              const locked = isRoundLocked(lockFirstMatchAt, now)
+              const locked = isRoundLockedMs(roundLockMs, now)
               const notYetOpen = false
               const byDate = matchesByRoundAndDate.get(roundNum)!
               const roundPredCount = [...byDate.values()].flat().filter(m => predictions.has(m.id)).length
@@ -496,7 +524,7 @@ export default function PredictPage() {
                       </span>
                       <RoundStatusBadge
                         roundNumber={roundNum}
-                        roundFirstMatchAt={lockFirstMatchAt}
+                        lockTimeMs={roundLockMs}
                         prevRoundLastMatchAt={prevLastMatchAt}
                         now={now}
                       />
@@ -527,7 +555,7 @@ export default function PredictPage() {
                                   <span className="text-xs text-green-600 ml-auto">✓</span>
                                 )}
                               </div>
-                              {renderCard(m, lockFirstMatchAt)}
+                              {renderCard(m)}
                             </div>
                           ))}
                         </div>
@@ -572,6 +600,8 @@ export default function PredictPage() {
                       if (!boundary) return null
                       const r2b2 = globalRoundBoundaries.get(2)
                       const lockAt = roundNum >= 2 ? (r2b2?.firstMatchAt ?? boundary.firstMatchAt) : boundary.firstMatchAt
+                      const groupRoundCutoff = roundNum >= 2 ? cutoffMinutes.r23 : cutoffMinutes.r1
+                      const groupRoundLockMs = roundLockTime(lockAt, groupRoundCutoff)
 
                       return (
                         <div key={roundNum} className="space-y-1.5">
@@ -581,7 +611,7 @@ export default function PredictPage() {
                             </span>
                             <RoundStatusBadge
                               roundNumber={roundNum}
-                              roundFirstMatchAt={lockAt}
+                              lockTimeMs={groupRoundLockMs}
                               prevRoundLastMatchAt={null}
                               now={now}
                             />
@@ -652,7 +682,7 @@ export default function PredictPage() {
                 const dayMatches = matchesByDate.get(dateKey)!
                 const hasPending = dayMatches.some(m => {
                   const info = matchRoundInfo.get(m.id)
-                  return info && !isRoundLocked(info.roundFirstMatchAt, now)
+                  return info && !isRoundLockedMs(info.lockTimeMs, now)
                     && !isRoundNotYetOpen(info.prevRoundLastMatchAt, now)
                     && m.status === "SCHEDULED" && !predictions.has(m.id)
                 })
@@ -692,7 +722,7 @@ export default function PredictPage() {
                   const pendingInDay = filtered.filter(m => {
                     const info = matchRoundInfo.get(m.id)
                     return !predictions.has(m.id) && m.status === "SCHEDULED"
-                      && info && !isRoundLocked(info.roundFirstMatchAt, now)
+                      && info && !isRoundLockedMs(info.lockTimeMs, now)
                       && !isRoundNotYetOpen(info.prevRoundLastMatchAt, now)
                   }).length
 
@@ -784,7 +814,7 @@ export default function PredictPage() {
           match={modalMatch}
           isLocked={(() => {
             const info = matchRoundInfo.get(modalMatch.id)
-            return info ? isRoundLocked(info.roundFirstMatchAt, now) : false
+            return info ? isRoundLockedMs(info.lockTimeMs, now) : false
           })()}
           isFinished={modalMatch.status === "FINISHED"}
           onClose={() => setModalMatch(null)}
