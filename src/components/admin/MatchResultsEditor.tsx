@@ -162,13 +162,13 @@ export function MatchResultsEditor() {
   return (
     <Card>
       <CardHeader className="pb-3">
-        <CardTitle className="text-sm flex items-center justify-between gap-2">
+        <CardTitle className="text-base font-semibold flex items-center justify-between gap-2">
           <button
             onClick={toggleOpen}
             className="flex items-center gap-2.5 hover:opacity-80 cursor-pointer transition-opacity"
           >
             <span className="bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-400 p-1.5 rounded-md">
-              <ClipboardEdit className="w-3.5 h-3.5" />
+              <ClipboardEdit className="w-4 h-4" />
             </span>
             Correção Manual de Placar
             {open

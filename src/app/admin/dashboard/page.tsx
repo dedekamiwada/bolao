@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
-import { Users, RefreshCw, Copy, Check, LogOut, Loader2, Plus, Trash2, Calculator, RotateCcw, AlertCircle, CheckCircle2, CalendarClock, Timer } from "lucide-react"
+import { Users, RefreshCw, Copy, Check, LogOut, Loader2, Plus, Trash2, Calculator, RotateCcw, AlertCircle, CheckCircle2, CalendarClock, Timer, ShieldCheck } from "lucide-react"
 import { MatchResultsEditor } from "@/components/admin/MatchResultsEditor"
 
 interface Participant { id: string; name: string; created_at: string; is_active: boolean }
@@ -269,24 +269,32 @@ export default function AdminDashboard() {
   return (
     <main className="min-h-screen bg-background">
       {/* Header */}
-      <div className="bg-green-900 text-white px-4 py-4 flex items-center justify-between">
-        <div>
-          <h1 className="font-bold">Painel Admin</h1>
-          <p className="text-green-300 text-xs">Bolão Copa 2026</p>
+      <div className="bg-green-900 text-white px-5 py-4 flex items-center justify-between shadow-md">
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 rounded-xl bg-green-800 border border-white/10 flex items-center justify-center shrink-0">
+            <ShieldCheck className="w-5 h-5 text-green-300" />
+          </div>
+          <div>
+            <h1 className="text-lg font-bold tracking-tight leading-none">Painel Admin</h1>
+            <p className="text-green-400/80 text-[11px] mt-1 leading-none">Bolão Copa 2026</p>
+          </div>
         </div>
-        <Button variant="ghost" size="sm" onClick={handleLogout} aria-label="Sair" className="text-green-300 hover:text-white hover:bg-green-800">
+        <Button
+          variant="ghost" size="sm" onClick={handleLogout} aria-label="Sair"
+          className="text-green-300 hover:text-white hover:bg-white/10 cursor-pointer transition-colors"
+        >
           <LogOut className="w-4 h-4" />
         </Button>
       </div>
 
       {/* Tab bar */}
-      <div className="border-b bg-background sticky top-0 z-10">
+      <div className="border-b bg-background sticky top-0 z-10 shadow-sm">
         <div className="max-w-2xl mx-auto px-4 flex gap-0">
           {tabs.map(t => (
             <button
               key={t.key}
               onClick={() => setTab(t.key)}
-              className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
+              className={`px-5 py-3 text-sm font-medium border-b-2 transition-colors cursor-pointer ${
                 tab === t.key
                   ? "border-green-700 text-green-700 dark:text-green-400 dark:border-green-400"
                   : "border-transparent text-muted-foreground hover:text-foreground"
@@ -305,8 +313,8 @@ export default function AdminDashboard() {
           <>
             <Card>
               <CardHeader className="pb-3">
-                <CardTitle className="text-sm flex items-center gap-2">
-                  <RefreshCw className="w-4 h-4" /> Resultados &amp; Pontuação
+                <CardTitle className="text-base font-semibold flex items-center gap-2">
+                  <RefreshCw className="w-4 h-4 text-green-700 dark:text-green-400" /> Resultados &amp; Pontuação
                 </CardTitle>
               </CardHeader>
               <CardContent className="pt-0 space-y-3">
@@ -333,8 +341,8 @@ export default function AdminDashboard() {
 
             <Card>
               <CardHeader className="pb-3">
-                <CardTitle className="text-sm flex items-center gap-2">
-                  <CalendarClock className="w-4 h-4" /> Correção de Datas
+                <CardTitle className="text-base font-semibold flex items-center gap-2">
+                  <CalendarClock className="w-4 h-4 text-green-700 dark:text-green-400" /> Correção de Datas
                 </CardTitle>
               </CardHeader>
               <CardContent className="pt-0 space-y-3">
@@ -393,7 +401,7 @@ export default function AdminDashboard() {
             {/* Palpites Incompletos */}
             <Card>
               <CardHeader className="pb-3">
-                <CardTitle className="text-sm flex items-center justify-between gap-2">
+                <CardTitle className="text-base font-semibold flex items-center justify-between gap-2">
                   <span className="flex items-center gap-2">
                     <AlertCircle className="w-4 h-4 text-orange-500" /> Palpites por Fase
                   </span>
@@ -476,8 +484,8 @@ export default function AdminDashboard() {
             {/* Prazo de Palpites */}
             <Card>
               <CardHeader className="pb-3">
-                <CardTitle className="text-sm flex items-center justify-between gap-2">
-                  <span className="flex items-center gap-2"><Timer className="w-4 h-4" /> Prazo de Palpites</span>
+                <CardTitle className="text-base font-semibold flex items-center justify-between gap-2">
+                  <span className="flex items-center gap-2"><Timer className="w-4 h-4 text-green-700 dark:text-green-400" /> Prazo de Palpites</span>
                   <button onClick={loadDeadlineConfig} aria-label="Atualizar" className="text-muted-foreground hover:text-foreground">
                     <RefreshCw className={`w-3.5 h-3.5 ${deadlineLoading ? "animate-spin" : ""}`} />
                   </button>
@@ -667,8 +675,8 @@ export default function AdminDashboard() {
 
             <Card>
               <CardHeader className="pb-3">
-                <CardTitle className="text-sm flex items-center gap-2">
-                  <Plus className="w-4 h-4" /> Adicionar Participante
+                <CardTitle className="text-base font-semibold flex items-center gap-2">
+                  <Plus className="w-4 h-4 text-green-700 dark:text-green-400" /> Adicionar Participante
                 </CardTitle>
               </CardHeader>
               <CardContent className="pt-0">
@@ -685,8 +693,8 @@ export default function AdminDashboard() {
 
             <Card>
               <CardHeader className="pb-3">
-                <CardTitle className="text-sm flex items-center gap-2">
-                  <Users className="w-4 h-4" /> Participantes ({participants.length})
+                <CardTitle className="text-base font-semibold flex items-center gap-2">
+                  <Users className="w-4 h-4 text-green-700 dark:text-green-400" /> Participantes ({participants.length})
                 </CardTitle>
               </CardHeader>
               <CardContent className="pt-0">
