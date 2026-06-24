@@ -4,7 +4,7 @@ import { useState } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { ClipboardEdit, Loader2, RefreshCw, Save, Search } from "lucide-react"
+import { ClipboardEdit, Loader2, RefreshCw, Save, Search, ChevronDown, ChevronUp } from "lucide-react"
 import { TeamFlag } from "@/components/shared/TeamFlag"
 
 interface Team {
@@ -156,16 +156,31 @@ export function MatchResultsEditor() {
     })
     .sort((a, b) => new Date(b.scheduled_at).getTime() - new Date(a.scheduled_at).getTime())
 
+  const isError = msg.startsWith("❌")
+  const isWarning = msg.startsWith("⚠️")
+
   return (
     <Card>
       <CardHeader className="pb-3">
         <CardTitle className="text-sm flex items-center justify-between gap-2">
-          <button onClick={toggleOpen} className="flex items-center gap-2 hover:opacity-80">
-            <ClipboardEdit className="w-4 h-4" /> Correção Manual de Placar
-            <span className="text-xs text-muted-foreground font-normal">{open ? "▲" : "▼"}</span>
+          <button
+            onClick={toggleOpen}
+            className="flex items-center gap-2.5 hover:opacity-80 cursor-pointer transition-opacity"
+          >
+            <span className="bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-400 p-1.5 rounded-md">
+              <ClipboardEdit className="w-3.5 h-3.5" />
+            </span>
+            Correção Manual de Placar
+            {open
+              ? <ChevronUp className="w-3.5 h-3.5 text-muted-foreground" />
+              : <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" />}
           </button>
           {open && (
-            <button onClick={loadMatches} className="text-muted-foreground hover:text-foreground" title="Recarregar jogos">
+            <button
+              onClick={loadMatches}
+              className="text-muted-foreground hover:text-foreground cursor-pointer transition-colors"
+              title="Recarregar jogos"
+            >
               <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} />
             </button>
           )}
@@ -187,19 +202,29 @@ export function MatchResultsEditor() {
                 className="w-full text-sm rounded-md border bg-background pl-8 pr-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-primary"
               />
             </div>
-            <label className="flex items-center gap-1.5 text-xs text-muted-foreground select-none shrink-0">
-              <input type="checkbox" checked={showAll} onChange={e => setShowAll(e.target.checked)} />
+            <label className="flex items-center gap-1.5 text-xs text-muted-foreground select-none shrink-0 cursor-pointer">
+              <input type="checkbox" checked={showAll} onChange={e => setShowAll(e.target.checked)} className="cursor-pointer" />
               Jogos futuros
             </label>
           </div>
 
-          {msg && <p className="text-xs">{msg}</p>}
+          {msg && (
+            <div className={`flex items-start gap-2 text-xs rounded-md px-3 py-2 ${
+              isError
+                ? "bg-red-50 dark:bg-red-950/30 text-red-700 dark:text-red-400 border border-red-200 dark:border-red-800"
+                : isWarning
+                ? "bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800"
+                : "bg-green-50 dark:bg-green-950/30 text-green-700 dark:text-green-400 border border-green-200 dark:border-green-800"
+            }`}>
+              <span>{msg.replace(/^[✓❌⚠️]\s*/, "")}</span>
+            </div>
+          )}
 
           {loading ? (
             <div className="flex justify-center py-6"><Loader2 className="w-5 h-5 animate-spin text-muted-foreground" /></div>
           ) : visible.length === 0 ? (
             <p className="text-sm text-muted-foreground text-center py-4">
-              {matches.length === 0 ? "Nenhum jogo carregado." : "Nenhum jogo já iniciado encontrado — marque “Jogos futuros” para ver todos."}
+              {matches.length === 0 ? "Nenhum jogo carregado." : "Nenhum jogo já iniciado encontrado — marque \"Jogos futuros\" para ver todos."}
             </p>
           ) : (
             <div className="divide-y max-h-[28rem] overflow-y-auto -mx-2 px-2">
@@ -208,7 +233,7 @@ export function MatchResultsEditor() {
                 const isDraw = edit.home !== "" && edit.home === edit.away
                 const needsWinner = m.stage !== "GROUP" && isDraw
                 return (
-                  <div key={m.id} className="py-2.5 space-y-1.5">
+                  <div key={m.id} className="py-3 space-y-2 hover:bg-muted/20 -mx-2 px-2 transition-colors rounded-md">
                     <div className="flex items-center gap-2 text-xs text-muted-foreground">
                       <span>
                         {new Date(m.scheduled_at).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo" })}
@@ -228,7 +253,7 @@ export function MatchResultsEditor() {
                         onChange={e => setEdit(m.id, { home: e.target.value }, edit)}
                         className="w-11 h-9 text-center font-bold rounded-md border bg-background focus:outline-none focus:ring-2 focus:ring-primary"
                       />
-                      <span className="text-muted-foreground text-sm">×</span>
+                      <span className="text-muted-foreground text-sm font-medium">×</span>
                       <input
                         type="number" min={0} max={99} inputMode="numeric"
                         value={edit.away}
@@ -248,8 +273,10 @@ export function MatchResultsEditor() {
                           <button
                             key={t.id}
                             onClick={() => setEdit(m.id, { winnerId: t.id }, edit)}
-                            className={`flex-1 py-1 px-2 rounded-md text-xs font-medium border transition-colors ${
-                              edit.winnerId === t.id ? "bg-green-600 text-white border-green-600" : "hover:bg-muted"
+                            className={`flex-1 py-1 px-2 rounded-md text-xs font-medium border transition-colors cursor-pointer ${
+                              edit.winnerId === t.id
+                                ? "bg-green-600 text-white border-green-600"
+                                : "hover:bg-muted"
                             }`}
                           >
                             {t.fifa_code}
@@ -260,14 +287,14 @@ export function MatchResultsEditor() {
 
                     <div className="flex gap-2">
                       <Button
-                        size="sm" variant="outline" className="flex-1 h-7 text-xs"
+                        size="sm" variant="outline" className="flex-1 h-7 text-xs cursor-pointer"
                         disabled={savingId === m.id}
                         onClick={() => saveResult(m, "LIVE")}
                       >
                         {savingId === m.id ? <Loader2 className="w-3 h-3 animate-spin" /> : "Salvar parcial (ao vivo)"}
                       </Button>
                       <Button
-                        size="sm" className="flex-1 h-7 text-xs bg-green-700 hover:bg-green-800 text-white"
+                        size="sm" className="flex-1 h-7 text-xs bg-green-700 hover:bg-green-800 text-white cursor-pointer"
                         disabled={savingId === m.id}
                         onClick={() => saveResult(m, "FINISHED")}
                       >

@@ -6,7 +6,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
-import { Users, RefreshCw, Copy, Check, LogOut, Loader2, Plus, Trash2, Calculator, RotateCcw, AlertCircle, CheckCircle2, CalendarClock } from "lucide-react"
+import {
+  Users, RefreshCw, Copy, Check, LogOut, Loader2, Plus, Trash2,
+  Calculator, RotateCcw, AlertCircle, CheckCircle2, CalendarClock, Shield,
+} from "lucide-react"
 import { MatchResultsEditor } from "@/components/admin/MatchResultsEditor"
 
 interface Participant {
@@ -19,6 +22,29 @@ interface Participant {
 type DateDiff = {
   match_id: number; home_team: string; away_team: string
   db_date: string; api_date: string; diff_minutes: number; status: string
+}
+
+interface PredStatus { id: string; name: string; done: number; total: number; complete: boolean; missing: number }
+
+function StatusMsg({ msg }: { msg: string }) {
+  if (!msg) return null
+  const isError = msg.startsWith("❌") || msg === "Erro ao recalcular"
+  const isWarning = msg.startsWith("⚠️")
+  const clean = msg.replace(/^[✓❌⚠️]\s*/, "")
+  return (
+    <div className={`flex items-start gap-2 text-xs rounded-md px-3 py-2 ${
+      isError
+        ? "bg-red-50 dark:bg-red-950/30 text-red-700 dark:text-red-400 border border-red-200 dark:border-red-800"
+        : isWarning
+        ? "bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800"
+        : "bg-green-50 dark:bg-green-950/30 text-green-700 dark:text-green-400 border border-green-200 dark:border-green-800"
+    }`}>
+      {isError
+        ? <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+        : <CheckCircle2 className="w-3.5 h-3.5 shrink-0 mt-0.5" />}
+      <span>{clean}</span>
+    </div>
+  )
 }
 
 export default function AdminDashboard() {
@@ -41,7 +67,6 @@ export default function AdminDashboard() {
   const [fixingDates, setFixingDates] = useState(false)
   const [dateFixMsg, setDateFixMsg] = useState("")
 
-  interface PredStatus { id: string; name: string; done: number; total: number; complete: boolean; missing: number }
   const [predStatus, setPredStatus] = useState<{ windowLabel: string; windowDeadline: string | null; statuses: PredStatus[] } | null>(null)
   const [predStatusLoading, setPredStatusLoading] = useState(false)
 
@@ -194,44 +219,57 @@ export default function AdminDashboard() {
   }
 
   return (
-    <main className="min-h-screen bg-background">
-      <div className="bg-green-900 text-white px-4 py-4 flex items-center justify-between">
-        <div>
-          <h1 className="font-bold">Painel Admin</h1>
-          <p className="text-green-300 text-xs">Bolão Copa 2026</p>
+    <main className="min-h-screen bg-muted/30">
+
+      <header className="bg-gradient-to-r from-green-900 to-green-800 text-white px-4 py-3 flex items-center justify-between shadow-md">
+        <div className="flex items-center gap-3">
+          <div className="bg-white/10 rounded-lg p-2">
+            <Shield className="w-4 h-4 text-green-200" />
+          </div>
+          <div>
+            <h1 className="font-bold text-base leading-tight">Painel Admin</h1>
+            <p className="text-green-300 text-xs">Bolão Copa 2026</p>
+          </div>
         </div>
-        <Button variant="ghost" size="sm" onClick={handleLogout} aria-label="Sair" className="text-green-300 hover:text-white hover:bg-green-800">
+        <Button
+          variant="ghost" size="sm" onClick={handleLogout}
+          aria-label="Sair"
+          className="text-green-300 hover:text-white hover:bg-white/10 cursor-pointer"
+        >
           <LogOut className="w-4 h-4" />
         </Button>
-      </div>
+      </header>
 
-      <div className="max-w-2xl mx-auto px-4 py-6 space-y-6">
+      <div className="max-w-2xl mx-auto px-4 py-6 space-y-4">
 
         {/* Sincronização e Pontuação */}
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-sm flex items-center gap-2">
-              <RefreshCw className="w-4 h-4" /> Resultados &amp; Pontuação
+            <CardTitle className="text-sm flex items-center gap-2.5">
+              <span className="bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-400 p-1.5 rounded-md">
+                <RefreshCw className="w-3.5 h-3.5" />
+              </span>
+              Resultados &amp; Pontuação
             </CardTitle>
           </CardHeader>
           <CardContent className="pt-0 space-y-3">
             <div className="flex flex-wrap gap-2">
-              <Button onClick={handleSync} disabled={syncing} size="sm" className="bg-green-700 hover:bg-green-800 text-white">
+              <Button onClick={handleSync} disabled={syncing} size="sm" className="bg-green-700 hover:bg-green-800 text-white cursor-pointer">
                 {syncing ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <RefreshCw className="w-4 h-4 mr-2" />}
-                Atualizar Jogos (automático)
+                Atualizar Jogos
               </Button>
-              <Button onClick={handleRecalculate} disabled={scoring} variant="outline" size="sm">
+              <Button onClick={handleRecalculate} disabled={scoring} variant="outline" size="sm" className="cursor-pointer">
                 {scoring ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Calculator className="w-4 h-4 mr-2" />}
                 Recalcular Pontos
               </Button>
             </div>
             <p className="text-xs text-muted-foreground">
-              <strong>Atualizar Jogos</strong> busca os placares oficiais na football-data.org (1 requisição),
-              atualiza jogos ao vivo, encerra os finalizados e já pontua participantes e ranking.
-              <strong> Recalcular Pontos</strong> refaz a pontuação de todos os jogos encerrados — use após corrigir um placar manualmente.
+              <strong>Atualizar Jogos</strong> busca os placares oficiais na football-data.org,
+              atualiza jogos ao vivo, encerra os finalizados e já pontua participantes e ranking.{" "}
+              <strong>Recalcular Pontos</strong> refaz a pontuação de todos os jogos encerrados — use após corrigir um placar manualmente.
             </p>
-            {syncMsg && <p className="text-xs text-muted-foreground">{syncMsg}</p>}
-            {scoreMsg && <p className="text-xs text-muted-foreground">{scoreMsg}</p>}
+            {syncMsg && <StatusMsg msg={syncMsg} />}
+            {scoreMsg && <StatusMsg msg={scoreMsg} />}
           </CardContent>
         </Card>
 
@@ -241,8 +279,11 @@ export default function AdminDashboard() {
         {/* Correção de Datas */}
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-sm flex items-center gap-2">
-              <CalendarClock className="w-4 h-4" /> Correção de Datas
+            <CardTitle className="text-sm flex items-center gap-2.5">
+              <span className="bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-400 p-1.5 rounded-md">
+                <CalendarClock className="w-3.5 h-3.5" />
+              </span>
+              Correção de Datas
             </CardTitle>
           </CardHeader>
           <CardContent className="pt-0 space-y-3">
@@ -251,12 +292,12 @@ export default function AdminDashboard() {
               Nunca altera placares ou palpites.
             </p>
             <div className="flex flex-wrap gap-2">
-              <Button onClick={handleCheckDates} disabled={checkingDates || fixingDates} size="sm" variant="outline">
+              <Button onClick={handleCheckDates} disabled={checkingDates || fixingDates} size="sm" variant="outline" className="cursor-pointer">
                 {checkingDates ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <CalendarClock className="w-4 h-4 mr-2" />}
                 Verificar Datas
               </Button>
               {dateDiffs && dateDiffs.length > 0 && (
-                <Button onClick={handleFixDates} disabled={fixingDates} size="sm" className="bg-amber-600 hover:bg-amber-700 text-white">
+                <Button onClick={handleFixDates} disabled={fixingDates} size="sm" className="bg-amber-600 hover:bg-amber-700 text-white cursor-pointer">
                   {fixingDates ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Check className="w-4 h-4 mr-2" />}
                   Corrigir {dateDiffs.length} jogo{dateDiffs.length !== 1 ? "s" : ""}
                 </Button>
@@ -264,8 +305,8 @@ export default function AdminDashboard() {
             </div>
 
             {dateDiffs && dateDiffs.length > 0 && (
-              <div className="rounded border overflow-hidden text-xs">
-                <div className="grid grid-cols-[1fr_1fr_auto] bg-muted px-3 py-1.5 font-medium text-muted-foreground gap-2">
+              <div className="rounded-md border overflow-hidden text-xs">
+                <div className="grid grid-cols-[1fr_1fr_auto] bg-muted px-3 py-2 font-medium text-muted-foreground gap-2 text-[11px] uppercase tracking-wide">
                   <span>Jogo</span>
                   <span>Banco → API</span>
                   <span>Δ</span>
@@ -276,7 +317,7 @@ export default function AdminDashboard() {
                   const mins = d.diff_minutes % 60
                   const delta = hours > 0 ? `${hours}h${mins > 0 ? `${mins}m` : ""}` : `${mins}m`
                   return (
-                    <div key={d.match_id} className="grid grid-cols-[1fr_1fr_auto] px-3 py-2 gap-2 border-t items-start">
+                    <div key={d.match_id} className="grid grid-cols-[1fr_1fr_auto] px-3 py-2.5 gap-2 border-t items-start hover:bg-muted/40 transition-colors">
                       <div>
                         <span className="font-medium">{d.home_team} × {d.away_team}</span>
                         <Badge variant={d.status === "FINISHED" ? "secondary" : "outline"} className="ml-1.5 text-[10px]">
@@ -295,7 +336,7 @@ export default function AdminDashboard() {
               </div>
             )}
 
-            {dateFixMsg && <p className="text-xs text-muted-foreground">{dateFixMsg}</p>}
+            {dateFixMsg && <StatusMsg msg={dateFixMsg} />}
           </CardContent>
         </Card>
 
@@ -303,11 +344,17 @@ export default function AdminDashboard() {
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-sm flex items-center justify-between gap-2">
-              <span className="flex items-center gap-2">
-                <AlertCircle className="w-4 h-4 text-orange-500" />
+              <span className="flex items-center gap-2.5">
+                <span className="bg-orange-100 dark:bg-orange-900/40 text-orange-600 dark:text-orange-400 p-1.5 rounded-md">
+                  <AlertCircle className="w-3.5 h-3.5" />
+                </span>
                 Palpites Incompletos
               </span>
-              <button onClick={loadPredStatus} aria-label="Atualizar palpites" className="text-muted-foreground hover:text-foreground">
+              <button
+                onClick={loadPredStatus}
+                aria-label="Atualizar palpites"
+                className="text-muted-foreground hover:text-foreground cursor-pointer transition-colors"
+              >
                 <RefreshCw className={`w-3.5 h-3.5 ${predStatusLoading ? "animate-spin" : ""}`} />
               </button>
             </CardTitle>
@@ -319,34 +366,44 @@ export default function AdminDashboard() {
               <p className="text-sm text-muted-foreground text-center py-4">Nenhuma janela de palpites aberta no momento.</p>
             ) : (
               <>
-                <div className="mb-3 px-1">
+                <div className="mb-3 px-2.5 py-2 bg-muted/40 rounded-md space-y-0.5">
                   <p className="text-xs font-medium text-muted-foreground">
                     Próximo fechamento: <span className="text-foreground font-semibold">{predStatus.windowLabel}</span>
                   </p>
                   {predStatus.windowDeadline && (
-                    <p className="text-xs text-muted-foreground mt-0.5">
+                    <p className="text-xs text-muted-foreground">
                       Fecha em: {new Date(predStatus.windowDeadline).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })}
                     </p>
                   )}
-                  <p className="text-xs text-muted-foreground mt-0.5">
-                    Total de jogos nessa janela: <strong>{predStatus.statuses[0]?.total ?? 0}</strong>
+                  <p className="text-xs text-muted-foreground">
+                    Total de jogos: <strong>{predStatus.statuses[0]?.total ?? 0}</strong>
                   </p>
                 </div>
                 <div className="divide-y">
                   {predStatus.statuses.map(p => (
-                    <div key={p.id} className="flex items-center justify-between py-2 gap-2">
-                      <div className="flex items-center gap-2 flex-1 min-w-0">
+                    <div key={p.id} className="flex items-center py-2.5 gap-3">
+                      <div className="shrink-0">
                         {p.complete
-                          ? <CheckCircle2 className="w-4 h-4 text-green-500 shrink-0" />
-                          : <AlertCircle className="w-4 h-4 text-orange-400 shrink-0" />}
-                        <span className="text-sm font-medium truncate">{p.name}</span>
+                          ? <CheckCircle2 className="w-4 h-4 text-green-500" />
+                          : <AlertCircle className="w-4 h-4 text-orange-400" />}
+                      </div>
+                      <div className="flex-1 min-w-0 space-y-1">
+                        <span className="text-sm font-medium block truncate">{p.name}</span>
+                        {!p.complete && (
+                          <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+                            <div
+                              className="h-full bg-amber-400 rounded-full transition-all duration-300"
+                              style={{ width: `${Math.round((p.done / p.total) * 100)}%` }}
+                            />
+                          </div>
+                        )}
                       </div>
                       <div className="shrink-0 text-right">
                         {p.complete ? (
-                          <Badge variant="success" className="text-xs">✓ Completo</Badge>
+                          <Badge variant="success" className="text-xs">Completo</Badge>
                         ) : (
-                          <span className="text-xs text-orange-600 dark:text-orange-400 font-semibold">
-                            {p.done}/{p.total} — faltam {p.missing}
+                          <span className="text-xs text-orange-600 dark:text-orange-400 font-semibold tabular-nums">
+                            {p.done}/{p.total}
                           </span>
                         )}
                       </div>
@@ -358,27 +415,38 @@ export default function AdminDashboard() {
           </CardContent>
         </Card>
 
-        {/* Link gerado (aparece após criar ou regenerar) */}
+        {/* Link gerado */}
         {generatedLink && (
-          <div className="bg-green-50 dark:bg-green-950/30 border border-green-200 rounded-lg p-3 space-y-2">
-            <p className="text-xs text-green-700 dark:text-green-400 font-medium">
-              ✓ Link de <strong>{generatedFor}</strong> — envie agora:
-            </p>
-            <div className="flex items-center gap-2">
-              <code className="text-xs bg-background border rounded px-2 py-1 flex-1 truncate">{generatedLink}</code>
-              <Button size="sm" variant="outline" onClick={() => copyLink()}>
-                {copiedLink === generatedLink ? <Check className="w-4 h-4 text-green-600" /> : <Copy className="w-4 h-4" />}
-              </Button>
-            </div>
-            <p className="text-xs text-muted-foreground">⚠️ Guarde agora — o token não é armazenado.</p>
-          </div>
+          <Card className="border-green-200 dark:border-green-800">
+            <CardContent className="pt-4 pb-4 space-y-3">
+              <div className="flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4 text-green-600 shrink-0" />
+                <p className="text-sm font-medium text-green-700 dark:text-green-400">
+                  Link de <strong>{generatedFor}</strong> — envie agora
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <code className="text-xs bg-muted border rounded-md px-2.5 py-1.5 flex-1 truncate">{generatedLink}</code>
+                <Button size="sm" variant="outline" onClick={() => copyLink()} className="shrink-0 cursor-pointer">
+                  {copiedLink === generatedLink ? <Check className="w-4 h-4 text-green-600" /> : <Copy className="w-4 h-4" />}
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground flex items-center gap-1.5">
+                <AlertCircle className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                Guarde agora — o token não é armazenado.
+              </p>
+            </CardContent>
+          </Card>
         )}
 
         {/* Criar participante */}
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-sm flex items-center gap-2">
-              <Plus className="w-4 h-4" /> Adicionar Participante
+            <CardTitle className="text-sm flex items-center gap-2.5">
+              <span className="bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-400 p-1.5 rounded-md">
+                <Plus className="w-3.5 h-3.5" />
+              </span>
+              Adicionar Participante
             </CardTitle>
           </CardHeader>
           <CardContent className="pt-0">
@@ -393,7 +461,7 @@ export default function AdminDashboard() {
                 onChange={e => setNewName(e.target.value)}
                 onKeyDown={e => e.key === "Enter" && createParticipant()}
               />
-              <Button onClick={createParticipant} disabled={creating || !newName.trim()}>
+              <Button onClick={createParticipant} disabled={creating || !newName.trim()} className="cursor-pointer">
                 {creating ? <Loader2 className="w-4 h-4 animate-spin" /> : "Criar"}
               </Button>
             </div>
@@ -403,8 +471,12 @@ export default function AdminDashboard() {
         {/* Lista de participantes */}
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-sm flex items-center gap-2">
-              <Users className="w-4 h-4" /> Participantes ({participants.length})
+            <CardTitle className="text-sm flex items-center gap-2.5">
+              <span className="bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 p-1.5 rounded-md">
+                <Users className="w-3.5 h-3.5" />
+              </span>
+              Participantes
+              <span className="ml-auto text-xs font-normal text-muted-foreground">{participants.length} no total</span>
             </CardTitle>
           </CardHeader>
           <CardContent className="pt-0">
@@ -417,17 +489,20 @@ export default function AdminDashboard() {
             ) : (
               <div className="divide-y">
                 {participants.map(p => (
-                  <div key={p.id} className="flex items-center justify-between py-2.5 gap-2">
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium truncate">{p.name}</p>
-                      <Badge variant={p.is_active ? "success" : "secondary"} className="text-[10px] mt-0.5">
-                        {p.is_active ? "Ativo" : "Inativo"}
-                      </Badge>
+                  <div key={p.id} className="flex items-center justify-between py-2.5 px-1.5 -mx-1.5 rounded-md hover:bg-muted/50 transition-colors gap-2">
+                    <div className="flex items-center gap-2.5 flex-1 min-w-0">
+                      <div className={`w-2 h-2 rounded-full shrink-0 ${p.is_active ? "bg-green-500" : "bg-gray-300 dark:bg-gray-600"}`} />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate">{p.name}</p>
+                        <p className={`text-[10px] font-medium ${p.is_active ? "text-green-600 dark:text-green-400" : "text-muted-foreground"}`}>
+                          {p.is_active ? "Ativo" : "Inativo"}
+                        </p>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-1 shrink-0">
+                    <div className="flex items-center gap-0.5 shrink-0">
                       <Button
                         variant="ghost" size="icon"
-                        className="h-7 w-7 text-muted-foreground hover:text-blue-600"
+                        className="h-7 w-7 text-muted-foreground hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/30 cursor-pointer transition-colors"
                         aria-label={`Gerar novo link para ${p.name}`}
                         onClick={() => regenerateToken(p.id, p.name)}
                         disabled={actionId === p.id}
@@ -438,7 +513,7 @@ export default function AdminDashboard() {
                       </Button>
                       <Button
                         variant="ghost" size="icon"
-                        className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                        className="h-7 w-7 text-muted-foreground hover:text-destructive hover:bg-red-50 dark:hover:bg-red-950/30 cursor-pointer transition-colors"
                         aria-label={`Excluir ${p.name}`}
                         onClick={() => hardDeleteParticipant(p.id, p.name)}
                         disabled={actionId === p.id}
@@ -452,6 +527,7 @@ export default function AdminDashboard() {
             )}
           </CardContent>
         </Card>
+
       </div>
     </main>
   )
