@@ -210,7 +210,7 @@ export default function KnockoutPredictPage() {
             </p>
           </div>
         </div>
-        <Link href={`/p/${token}/ranking`}>
+        <Link href={`/p/${token}`}>
           <Button size="sm" variant="ghost" className="text-green-300 hover:text-white hover:bg-white/10 gap-1.5">
             <Trophy className="w-4 h-4" />
             <span className="text-xs">Ranking</span>

@@ -197,14 +197,14 @@ export default function PublicRulesPage() {
               <div className="w-2 h-2 rounded-full bg-blue-500 mt-1.5 shrink-0" />
               <div>
                 <div className="font-medium">16 avos de Final</div>
-                <div className="text-xs text-muted-foreground">Abre após o encerramento da Fase de Grupos · Fecha 15 min antes do 1° jogo (28/06)</div>
+                <div className="text-xs text-muted-foreground">Abre após o encerramento da Fase de Grupos · Cada jogo fecha individualmente 15 min antes de começar</div>
               </div>
             </div>
             <div className="flex items-start gap-3 py-1.5">
               <div className="w-2 h-2 rounded-full bg-purple-500 mt-1.5 shrink-0" />
               <div>
                 <div className="font-medium">Oitavas → Final</div>
-                <div className="text-xs text-muted-foreground">Cada fase abre após a anterior encerrar · Fecha 15 min antes do 1° jogo da fase</div>
+                <div className="text-xs text-muted-foreground">Cada fase abre após a anterior encerrar · Cada jogo fecha individualmente 15 min antes de começar</div>
               </div>
             </div>
           </CardContent>

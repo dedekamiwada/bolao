@@ -40,7 +40,10 @@ export default function AdminDashboard() {
   const [deadlineLoading, setDeadlineLoading] = useState(false)
   const [r1Input, setR1Input] = useState("")
   const [r23Input, setR23Input] = useState("")
-  const [koInputs, setKoInputs] = useState<Record<string, string>>({})
+  const [koDefaultInput, setKoDefaultInput] = useState("15")
+  const [savingKoDefault, setSavingKoDefault] = useState(false)
+  const [koMatchInputs, setKoMatchInputs] = useState<Map<number, string>>(new Map())
+  const [savingKoMatch, setSavingKoMatch] = useState<number | null>(null)
   const [deadlineMsg, setDeadlineMsg] = useState("")
   const [savingRound, setSavingRound] = useState<string | null>(null)
 
@@ -134,14 +137,16 @@ export default function AdminDashboard() {
       setDeadlineConfig(data)
       setR1Input(String(data.r1CutoffMinutes))
       setR23Input(String(data.r23CutoffMinutes))
-      setKoInputs(Object.fromEntries(Object.entries(data.koCutoffMinutes).map(([k, v]) => [k, String(v)])))
+      // Usa R32 como valor representativo do padrão mata-mata
+      const koValues = Object.values(data.koCutoffMinutes as Record<string, number>)
+      setKoDefaultInput(String(koValues[0] ?? 15))
     }
     setDeadlineLoading(false)
   }
 
   async function saveRoundCutoff(round: string) {
     const groupLabels: Record<string, string> = { r1: "Rodada 1", r23: "Rodadas 2+3" }
-    const value = round === "r1" ? r1Input : round === "r23" ? r23Input : (koInputs[round] ?? "")
+    const value = round === "r1" ? r1Input : r23Input
     const minutes = Number(value)
     if (isNaN(minutes) || value === "") return
     setSavingRound(round); setDeadlineMsg("")
@@ -152,6 +157,44 @@ export default function AdminDashboard() {
     setSavingRound(null)
     const label = groupLabels[round] ?? KO_STAGE_LABELS[round] ?? round
     if (res.ok) { setDeadlineMsg(`✓ ${label} → ${minutes} min.`); loadDeadlineConfig() }
+    else setDeadlineMsg("❌ Erro ao salvar.")
+  }
+
+  async function saveKoDefault() {
+    const minutes = Number(koDefaultInput)
+    if (isNaN(minutes)) return
+    setSavingKoDefault(true); setDeadlineMsg("")
+    await Promise.all(
+      KO_STAGE_ORDER.map(stage =>
+        fetch("/api/admin/deadline-config", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ type: "round", round: stage, minutes }),
+        })
+      )
+    )
+    setSavingKoDefault(false)
+    setDeadlineMsg(`✓ Mata-mata → ${minutes} min antes de cada jogo.`)
+    loadDeadlineConfig()
+  }
+
+  function toLocalDatetimeInput(iso: string): string {
+    return new Date(iso).toLocaleString("sv-SE", { timeZone: "America/Sao_Paulo" }).slice(0, 16)
+  }
+
+  function computeDefaultClose(scheduledAt: string, cutoffMin: number): string {
+    return toLocalDatetimeInput(new Date(new Date(scheduledAt).getTime() - cutoffMin * 60_000).toISOString())
+  }
+
+  async function saveKoMatchOverride(matchId: number) {
+    const raw = koMatchInputs.get(matchId)
+    if (!raw) return
+    setSavingKoMatch(matchId); setDeadlineMsg("")
+    const res = await fetch("/api/admin/deadline-config", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ type: "match_override", matchId, closeAt: new Date(raw).toISOString() }),
+    })
+    setSavingKoMatch(null)
+    if (res.ok) { setDeadlineMsg("✓ Prazo salvo."); loadDeadlineConfig() }
     else setDeadlineMsg("❌ Erro ao salvar.")
   }
 
@@ -499,11 +542,11 @@ export default function AdminDashboard() {
                   <div className="flex justify-center py-4"><Loader2 className="w-5 h-5 animate-spin text-muted-foreground" /></div>
                 ) : (
                   <>
-                    {/* Round cutoffs */}
+                    {/* Fase de grupos — cutoffs por rodada */}
                     <div className="space-y-2">
-                      <p className="text-xs font-medium text-muted-foreground">Fechar palpites X min antes do 1º jogo</p>
+                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Fase de Grupos</p>
+                      <p className="text-[11px] text-muted-foreground">Fecha X min antes do 1º jogo da rodada.</p>
                       <div className="flex flex-col gap-2">
-                        {/* Fase de grupos */}
                         {[
                           { key: "r1", label: "Rodada 1", value: r1Input, onChange: setR1Input },
                           { key: "r23", label: "Rodadas 2 e 3", value: r23Input, onChange: setR23Input },
@@ -517,75 +560,108 @@ export default function AdminDashboard() {
                             </Button>
                           </div>
                         ))}
-                        {/* Mata-mata por estágio */}
-                        {KO_STAGE_ORDER.map(stage => (
-                          <div key={stage} className="flex items-center gap-2">
-                            <span className="text-xs w-28 shrink-0 text-muted-foreground">{KO_STAGE_LABELS[stage]}</span>
-                            <Input
-                              type="number"
-                              className="h-8 w-20 text-sm"
-                              value={koInputs[stage] ?? ""}
-                              onChange={e => setKoInputs(prev => ({ ...prev, [stage]: e.target.value }))}
-                            />
-                            <span className="text-xs text-muted-foreground">min</span>
-                            <Button size="sm" variant="outline" className="h-8 text-xs" disabled={savingRound === stage} onClick={() => saveRoundCutoff(stage)}>
-                              {savingRound === stage ? <Loader2 className="w-3 h-3 animate-spin" /> : "Salvar"}
-                            </Button>
-                          </div>
-                        ))}
                       </div>
-                      <p className="text-[11px] text-muted-foreground">Valores negativos mantêm aberto após o início (ex: -30 = fecha 30 min depois do 1º jogo).</p>
                     </div>
 
-                    {/* Existing match overrides */}
-                    {deadlineConfig && deadlineConfig.matchOverrides.length > 0 && (
-                      <div className="space-y-2">
-                        <p className="text-xs font-medium text-muted-foreground">Prazos específicos ativos</p>
-                        <div className="divide-y rounded border overflow-hidden text-xs">
-                          {deadlineConfig.matchOverrides.map(o => (
-                            <div key={o.match_id} className="flex items-center justify-between px-3 py-2 gap-2 bg-card">
-                              <div>
-                                <span className="font-medium">{o.match?.home_team?.fifa_code ?? "?"} × {o.match?.away_team?.fifa_code ?? "?"}</span>
-                                {o.match?.group_letter
-                                  ? <span className="text-muted-foreground ml-1.5">Grupo {o.match.group_letter}</span>
-                                  : o.match?.koStageLabel
-                                    ? <span className="text-muted-foreground ml-1.5">{o.match.koStageLabel}</span>
-                                    : null}
-                              </div>
-                              <div className="flex items-center gap-2 shrink-0">
-                                <span className="text-muted-foreground">
-                                  até {new Date(o.close_at).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })}
-                                </span>
-                                <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
-                                  disabled={removingOverride === o.match_id} onClick={() => removeMatchOverride(o.match_id)}>
-                                  {removingOverride === o.match_id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Trash2 className="w-3 h-3" />}
-                                </Button>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
+                    {/* Mata-mata — cutoff padrão único */}
+                    <div className="space-y-2 pt-2 border-t">
+                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Mata-Mata — Padrão</p>
+                      <p className="text-[11px] text-muted-foreground">Cada jogo fecha individualmente X min antes de começar. Aplica-se a todas as fases do mata-mata.</p>
+                      <div className="flex items-center gap-2">
+                        <Input type="number" className="h-9 w-24 text-sm" value={koDefaultInput} onChange={e => setKoDefaultInput(e.target.value)} />
+                        <span className="text-sm text-muted-foreground">min antes de cada jogo</span>
+                        <Button size="sm" className="h-9 bg-green-700 hover:bg-green-800 text-white ml-auto" disabled={savingKoDefault} onClick={saveKoDefault}>
+                          {savingKoDefault ? <Loader2 className="w-3 h-3 animate-spin" /> : "Salvar"}
+                        </Button>
                       </div>
-                    )}
+                    </div>
 
-                    {/* Add new match override — multi-select */}
-                    {deadlineConfig && (deadlineConfig.availableGroupMatches.length > 0 || deadlineConfig.availableKoMatches.length > 0) && (() => {
+                    {/* Mata-mata — prazo por jogo */}
+                    {deadlineConfig && (() => {
+                      const overrideMap = new Map(deadlineConfig.matchOverrides.map(o => [o.match_id, o.close_at]))
+                      const koOverrideMatches = deadlineConfig.matchOverrides
+                        .filter(o => o.match?.koStage)
+                        .map(o => o.match!)
+                      const koAvailWithTeams = deadlineConfig.availableKoMatches
+                        .filter(m => m.home_team && m.away_team)
+                      const seen = new Set<number>()
+                      const allKo = [...koOverrideMatches, ...koAvailWithTeams]
+                        .filter(m => { if (seen.has(m.id)) return false; seen.add(m.id); return true })
+                        .sort((a, b) => new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime())
+
+                      if (allKo.length === 0) return null
+
+                      const koMin = Number(koDefaultInput) || 15
+
+                      return (
+                        <div className="space-y-2 pt-2 border-t">
+                          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Mata-Mata — Prazo por Jogo</p>
+                          <p className="text-[11px] text-muted-foreground">Defina um prazo personalizado para jogos específicos. Deixe em branco para usar o padrão acima.</p>
+                          <div className="space-y-2">
+                            {allKo.map(m => {
+                              const hasOverride = overrideMap.has(m.id)
+                              const overrideVal = hasOverride ? toLocalDatetimeInput(overrideMap.get(m.id)!) : ""
+                              const defaultClose = computeDefaultClose(m.scheduled_at, koMin)
+                              const inputVal = koMatchInputs.has(m.id) ? (koMatchInputs.get(m.id) ?? "") : overrideVal
+                              const isDirty = koMatchInputs.has(m.id) && koMatchInputs.get(m.id) !== overrideVal
+
+                              return (
+                                <div key={m.id} className={`rounded-lg border p-3 space-y-2 ${hasOverride ? "border-amber-300 bg-amber-50/50 dark:border-amber-700 dark:bg-amber-950/20" : ""}`}>
+                                  <div className="flex items-center justify-between gap-2">
+                                    <div>
+                                      <span className="text-sm font-semibold">
+                                        {m.home_team?.fifa_code ?? "?"} × {m.away_team?.fifa_code ?? "?"}
+                                      </span>
+                                      <span className="text-xs text-muted-foreground ml-2">
+                                        {m.koStageLabel ?? m.koStage} · {new Date(m.scheduled_at).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo" })}
+                                      </span>
+                                    </div>
+                                    {hasOverride && !isDirty && (
+                                      <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive shrink-0"
+                                        disabled={removingOverride === m.id} onClick={() => removeMatchOverride(m.id)}>
+                                        {removingOverride === m.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Trash2 className="w-3 h-3" />}
+                                      </Button>
+                                    )}
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    <div className="flex-1 space-y-0.5">
+                                      <p className="text-[11px] text-muted-foreground">
+                                        {hasOverride ? "Prazo personalizado" : `Padrão: fecha em ${new Date(defaultClose).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}`}
+                                      </p>
+                                      <Input
+                                        type="datetime-local"
+                                        className="h-9 text-sm"
+                                        value={inputVal}
+                                        placeholder={defaultClose}
+                                        onChange={e => setKoMatchInputs(prev => { const next = new Map(prev); next.set(m.id, e.target.value); return next })}
+                                      />
+                                    </div>
+                                    <Button
+                                      size="sm"
+                                      className="h-9 bg-green-700 hover:bg-green-800 text-white shrink-0 self-end"
+                                      disabled={!isDirty || !koMatchInputs.get(m.id) || savingKoMatch === m.id}
+                                      onClick={() => saveKoMatchOverride(m.id)}
+                                    >
+                                      {savingKoMatch === m.id ? <Loader2 className="w-3 h-3 animate-spin" /> : "Salvar"}
+                                    </Button>
+                                  </div>
+                                </div>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      )
+                    })()}
+
+                    {/* Fase de grupos — prazo por jogo (multi-select) */}
+                    {deadlineConfig && deadlineConfig.availableGroupMatches.length > 0 && (() => {
                       const groupMatches = [...deadlineConfig.availableGroupMatches].sort((a, b) => new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime())
-                      const koMatches = [...deadlineConfig.availableKoMatches]
-                      const allAvailable = [...groupMatches, ...koMatches]
+                      const groupOverrides = deadlineConfig.matchOverrides.filter(o => o.match?.group_letter)
 
                       const byRound: Record<1 | 2 | 3, typeof groupMatches> = { 1: [], 2: [], 3: [] }
                       groupMatches.forEach(m => { const r = (m.round ?? 1) as 1 | 2 | 3; byRound[r].push(m) })
-
-                      const KO_STAGE_LABELS: Record<string, string> = { R32: "16 avos", R16: "Oitavas", QF: "Quartas", SF: "Semifinais", "3RD": "3º Lugar", FINAL: "Final" }
-                      const KO_STAGE_ORDER = ["R32", "R16", "QF", "SF", "3RD", "FINAL"]
-                      const koByStage = new Map<string, typeof koMatches>()
-                      koMatches.forEach(m => { const s = m.koStage ?? ""; if (!koByStage.has(s)) koByStage.set(s, []); koByStage.get(s)!.push(m) })
-                      const koStages = KO_STAGE_ORDER.filter(s => koByStage.has(s))
-
                       const idsForRound = (r: 1 | 2 | 3) => new Set(byRound[r].map(m => m.id))
                       const allInRound = (r: 1 | 2 | 3) => byRound[r].length > 0 && byRound[r].every(m => selectedMatchIds.has(m.id))
-                      const idsForKoStage = (s: string) => new Set((koByStage.get(s) ?? []).map(m => m.id))
-                      const allInKoStage = (s: string) => { const ids = idsForKoStage(s); return ids.size > 0 && [...ids].every(id => selectedMatchIds.has(id)) }
 
                       function toggleGroup(ids: Set<number>, allSelected: boolean) {
                         setSelectedMatchIds(prev => {
@@ -595,18 +671,31 @@ export default function AdminDashboard() {
                           return next
                         })
                       }
-
                       function toggleMatch(id: number) {
-                        setSelectedMatchIds(prev => {
-                          const next = new Set(prev)
-                          next.has(id) ? next.delete(id) : next.add(id)
-                          return next
-                        })
+                        setSelectedMatchIds(prev => { const next = new Set(prev); next.has(id) ? next.delete(id) : next.add(id); return next })
                       }
 
                       return (
-                        <div className="space-y-2">
-                          <p className="text-xs font-medium text-muted-foreground">Adicionar prazo por jogo</p>
+                        <div className="space-y-2 pt-2 border-t">
+                          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Fase de Grupos — Prazo por Jogo</p>
+
+                          {groupOverrides.length > 0 && (
+                            <div className="divide-y rounded border overflow-hidden text-xs mb-2">
+                              {groupOverrides.map(o => (
+                                <div key={o.match_id} className="flex items-center justify-between px-3 py-2 gap-2 bg-amber-50/50 dark:bg-amber-950/20">
+                                  <span className="font-medium">{o.match?.home_team?.fifa_code ?? "?"} × {o.match?.away_team?.fifa_code ?? "?"} <span className="text-muted-foreground font-normal">Grupo {o.match?.group_letter}</span></span>
+                                  <div className="flex items-center gap-2 shrink-0">
+                                    <span className="text-muted-foreground">até {new Date(o.close_at).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })}</span>
+                                    <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
+                                      disabled={removingOverride === o.match_id} onClick={() => removeMatchOverride(o.match_id)}>
+                                      {removingOverride === o.match_id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Trash2 className="w-3 h-3" />}
+                                    </Button>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+
                           <div className="flex gap-1.5 flex-wrap">
                             {([1, 2, 3] as const).filter(r => byRound[r].length > 0).map(r => (
                               <button key={`r${r}`} onClick={() => toggleGroup(idsForRound(r), allInRound(r))}
@@ -614,27 +703,16 @@ export default function AdminDashboard() {
                                 R{r} ({byRound[r].length})
                               </button>
                             ))}
-                            {koStages.map(s => (
-                              <button key={s} onClick={() => toggleGroup(idsForKoStage(s), allInKoStage(s))}
-                                className={`text-xs px-2 py-1 rounded border transition-colors ${allInKoStage(s) ? "bg-green-700 text-white border-green-700" : "bg-background text-muted-foreground border-border hover:bg-muted"}`}>
-                                {KO_STAGE_LABELS[s] ?? s} ({(koByStage.get(s) ?? []).length})
-                              </button>
-                            ))}
                             {selectedMatchIds.size > 0 && (
-                              <button onClick={() => setSelectedMatchIds(new Set())}
-                                className="text-xs px-2 py-1 rounded border border-border text-muted-foreground hover:bg-muted ml-auto">
-                                Limpar
-                              </button>
+                              <button onClick={() => setSelectedMatchIds(new Set())} className="text-xs px-2 py-1 rounded border border-border text-muted-foreground hover:bg-muted ml-auto">Limpar</button>
                             )}
                           </div>
                           <div className="rounded border divide-y max-h-48 overflow-y-auto text-xs">
-                            {allAvailable.map(m => (
+                            {groupMatches.map(m => (
                               <label key={m.id} className="flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-muted/50">
                                 <input type="checkbox" checked={selectedMatchIds.has(m.id)} onChange={() => toggleMatch(m.id)} className="rounded" />
                                 <span className="font-medium">{m.home_team?.fifa_code ?? "?"} × {m.away_team?.fifa_code ?? "?"}</span>
-                                {m.group_letter
-                                  ? <span className="text-muted-foreground">Grupo {m.group_letter}</span>
-                                  : <span className="text-muted-foreground">{m.koStageLabel ?? m.koStage}</span>}
+                                <span className="text-muted-foreground">Grupo {m.group_letter}</span>
                                 <span className="text-muted-foreground ml-auto">{new Date(m.scheduled_at).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })}</span>
                               </label>
                             ))}
