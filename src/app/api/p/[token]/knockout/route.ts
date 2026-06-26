@@ -110,16 +110,25 @@ export async function POST(
       : isPredictionLocked(match.scheduled_at, cutoffForStage(match.stage))
     if (locked) continue
 
-    if (pred.homeScore === undefined || pred.awayScore === undefined || !pred.winnerId) continue
+    if (pred.homeScore === undefined || pred.awayScore === undefined) continue
+
+    // Não há mais palpite de "quem passa": derivamos o vencedor do placar para
+    // o chaveamento do participante. Empate fica sem vencedor (null) e não
+    // avança a chave — mas a pontuação do empate é creditada normalmente.
+    const homeTeamId = pred.homeTeamId ?? null
+    const awayTeamId = pred.awayTeamId ?? null
+    let winnerTeamId: number | null = null
+    if (pred.homeScore > pred.awayScore) winnerTeamId = homeTeamId
+    else if (pred.awayScore > pred.homeScore) winnerTeamId = awayTeamId
 
     validPredictions.push({
       participant_id: participant!.id,
       match_id: pred.matchId,
-      home_team_id: pred.homeTeamId ?? null,
-      away_team_id: pred.awayTeamId ?? null,
+      home_team_id: homeTeamId,
+      away_team_id: awayTeamId,
       home_score: pred.homeScore,
       away_score: pred.awayScore,
-      winner_team_id: pred.winnerId,
+      winner_team_id: winnerTeamId,
       is_locked: false,
     })
   }

@@ -136,7 +136,7 @@ export default async function RulesPage({ params }: Props) {
                 <tr className="text-xs text-muted-foreground border-b">
                   <th className="text-left py-2">Fase</th>
                   <th className="text-center py-2">Placar exato</th>
-                  <th className="text-center py-2">Classificado</th>
+                  <th className="text-center py-2">Resultado certo</th>
                 </tr>
               </thead>
               <tbody className="divide-y">
@@ -172,6 +172,14 @@ export default async function RulesPage({ params }: Props) {
                 </tr>
               </tbody>
             </table>
+            <p className="text-xs text-muted-foreground mt-3 pt-3 border-t">
+              No mata-mata você palpita apenas o placar — não há mais escolha de
+              quem se classifica. <strong>Placar exato</strong> vale os pontos cheios;
+              acertar o resultado (vitória, derrota ou <strong>empate</strong>) sem o
+              placar exato vale os pontos de &quot;resultado certo&quot;. Em jogos
+              decididos na prorrogação ou nos pênaltis, vale o placar após a
+              prorrogação (empate = pênaltis).
+            </p>
           </CardContent>
         </Card>
 

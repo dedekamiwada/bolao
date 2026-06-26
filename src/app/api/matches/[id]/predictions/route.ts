@@ -96,13 +96,19 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
       }
     }
 
-    // Mata-mata ao vivo: só placar exato é verificável (winner ainda não determinado)
+    // Mata-mata ao vivo: pontua igual ao grupo, pelo placar parcial. Sem
+    // palpite de "quem passa", o resultado (vitória/derrota/empate) já é
+    // determinável pelo sinal do placar atual.
     if (isKnockoutLive && !score && p.home_score !== null && p.away_score !== null) {
-      const isExact = p.home_score === match.home_score && p.away_score === match.away_score
+      const b = scoreKnockoutMatch(
+        match.stage as Stage,
+        { home: p.home_score, away: p.away_score },
+        { home: match.home_score!, away: match.away_score! }
+      )
       points = {
-        total_points: isExact ? null : 0, // null = inconclusivo (pode acertar winner ainda)
-        points_exact_score: isExact ? 1 : 0, // 1 = flag "acertou placar" (valor real calculado ao encerrar)
-        points_result: 0,
+        total_points: b.total,
+        points_exact_score: b.exactScore,
+        points_result: b.correctResult,
         points_goal_diff: 0,
       }
     }

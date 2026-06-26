@@ -57,13 +57,13 @@ export async function recalculateMatchScores(matchId: number, opts?: { updateRan
         points = { exact: breakdown.exactScore, result: breakdown.result, goalDiff: breakdown.goalDiff, total: breakdown.total }
       }
     } else {
-      if (pred && pred.winner_team_id && match.winner_team_id) {
+      if (pred && pred.home_score !== null && pred.away_score !== null) {
         const breakdown = scoreKnockoutMatch(
           match.stage as Stage,
-          { home: pred.home_score ?? 0, away: pred.away_score ?? 0, winnerId: pred.winner_team_id },
-          { home: match.home_score, away: match.away_score, winnerId: match.winner_team_id }
+          { home: pred.home_score, away: pred.away_score },
+          { home: match.home_score, away: match.away_score }
         )
-        points = { exact: breakdown.exactScore, result: breakdown.correctWinner, goalDiff: 0, total: breakdown.total }
+        points = { exact: breakdown.exactScore, result: breakdown.correctResult, goalDiff: 0, total: breakdown.total }
       }
     }
 

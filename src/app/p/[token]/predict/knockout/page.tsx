@@ -124,29 +124,11 @@ export default function KnockoutPredictPage() {
     })
   }
 
-  function handleWinnerSelect(matchId: number, winnerId: number) {
-    setPredictions(prev => {
-      const next = new Map(prev)
-      const match = matches.find(m => m.id === matchId)
-      const existing = next.get(matchId) ?? {
-        match_id: matchId,
-        home_team_id: match?.home_team_id ?? null,
-        away_team_id: match?.away_team_id ?? null,
-        home_score: null,
-        away_score: null,
-        winner_team_id: null,
-        is_locked: false,
-      }
-      next.set(matchId, { ...existing, winner_team_id: winnerId })
-      return next
-    })
-  }
-
   async function handleSave() {
     setSaving(true)
     setSaveMsg("")
     const body = [...predictions.entries()]
-      .filter(([, p]) => !p.is_locked && p.winner_team_id !== null)
+      .filter(([, p]) => !p.is_locked && p.home_score !== null && p.away_score !== null)
       .map(([matchId, p]) => ({
         matchId,
         homeTeamId: p.home_team_id,
@@ -238,8 +220,8 @@ export default function KnockoutPredictPage() {
             })}
           </div>
           <p className="text-[11px] text-muted-foreground pt-1 border-t">
-            <span className="font-semibold text-green-700 dark:text-green-400">★ Placar exato</span> = pontos do placar apenas (não acumula com quem passa).{" "}
-            Acertar só quem passa = pontos do resultado.
+            <span className="font-semibold text-green-700 dark:text-green-400">★ Placar exato</span> = pontos cheios.{" "}
+            Acertar o resultado (vitória, derrota ou <span className="font-semibold">empate</span>) sem o placar exato = pontos do resultado.
           </p>
         </div>
 
@@ -258,7 +240,6 @@ export default function KnockoutPredictPage() {
                   const homeTeam = match.home_team
                   const awayTeam = match.away_team
                   const teamsKnown = !!(homeTeam && awayTeam)
-                  const isDraw = pred?.home_score !== null && pred?.away_score !== null && pred?.home_score === pred?.away_score
 
                   return (
                     <Card key={match.id} className={isLocked ? "opacity-75" : ""}>
@@ -328,38 +309,6 @@ export default function KnockoutPredictPage() {
                             <TeamFlag team={awayTeam} />
                           </div>
                         </div>
-
-                        {/* Quem avança em caso de empate */}
-                        {isDraw && !isLocked && homeTeam && awayTeam && (
-                          <div className="mt-2.5 pt-2.5 border-t">
-                            <p className="text-xs text-muted-foreground mb-2">Empate no tempo normal — quem avança?</p>
-                            <div className="flex gap-2">
-                              <button
-                                onClick={() => handleWinnerSelect(match.id, homeTeam.id)}
-                                className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-sm font-semibold border transition-colors ${pred?.winner_team_id === homeTeam.id ? "bg-green-600 text-white border-green-600" : "hover:bg-muted border-border"}`}
-                              >
-                                <TeamFlag team={homeTeam} />
-                                {homeTeam.fifa_code}
-                              </button>
-                              <button
-                                onClick={() => handleWinnerSelect(match.id, awayTeam.id)}
-                                className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-sm font-semibold border transition-colors ${pred?.winner_team_id === awayTeam.id ? "bg-green-600 text-white border-green-600" : "hover:bg-muted border-border"}`}
-                              >
-                                {awayTeam.fifa_code}
-                                <TeamFlag team={awayTeam} />
-                              </button>
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Quem avança (não-empate, readonly) */}
-                        {!isDraw && pred?.winner_team_id && !isLocked && (
-                          <div className="mt-1.5 text-[11px] text-muted-foreground">
-                            Passa: <span className="font-semibold text-foreground">
-                              {pred.winner_team_id === homeTeam?.id ? homeTeam?.fifa_code : awayTeam?.fifa_code}
-                            </span>
-                          </div>
-                        )}
 
                         {/* Resultado oficial */}
                         {match.status === "FINISHED" && match.home_score !== null && (

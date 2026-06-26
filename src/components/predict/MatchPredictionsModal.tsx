@@ -126,13 +126,6 @@ export function MatchPredictionsModal({ match, isLocked, isFinished, onClose }: 
   const koStage = match.stage as Stage
   const koPts = isKnockout && koStage in KNOCKOUT_POINTS ? KNOCKOUT_POINTS[koStage] : null
 
-  function winnerLabel(winnerId: number | null) {
-    if (!winnerId) return null
-    if (winnerId === match.home_team?.id) return match.home_team?.fifa_code
-    if (winnerId === match.away_team?.id) return match.away_team?.fifa_code
-    return null
-  }
-
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
@@ -221,7 +214,7 @@ export function MatchPredictionsModal({ match, isLocked, isFinished, onClose }: 
                   {isKnockout && koPts ? (
                     <>
                       <span className="text-[10px] bg-green-600 text-white dark:bg-green-700 px-2 py-0.5 rounded-full font-medium">+{koPts.exact} ★ Placar exato</span>
-                      <span className="text-[10px] bg-yellow-100 text-yellow-700 dark:bg-yellow-950/40 dark:text-yellow-500 px-2 py-0.5 rounded-full font-medium">+{koPts.result} Acertou quem passa</span>
+                      <span className="text-[10px] bg-yellow-100 text-yellow-700 dark:bg-yellow-950/40 dark:text-yellow-500 px-2 py-0.5 rounded-full font-medium">+{koPts.result} Acertou o resultado</span>
                       <span className="text-[10px] bg-red-100 text-red-700 dark:bg-red-950/40 dark:text-red-400 px-2 py-0.5 rounded-full font-medium">+0 Errou</span>
                     </>
                   ) : (
@@ -237,7 +230,6 @@ export function MatchPredictionsModal({ match, isLocked, isFinished, onClose }: 
 
               <div className="space-y-1.5 relative">
                 {sortedEntries.map((e, idx) => {
-                  const winner = isKnockout ? winnerLabel(e.winner_team_id) : null
                   return (
                     <div key={e.participant_id} className="flex items-center gap-3 px-2 py-2 rounded-lg bg-muted/30">
                       {/* Posição */}
@@ -250,12 +242,9 @@ export function MatchPredictionsModal({ match, isLocked, isFinished, onClose }: 
                       {/* Nome */}
                       <span className="flex-1 text-sm font-medium truncate">{e.name}</span>
 
-                      {/* Palpite + quem passa (mata-mata) */}
+                      {/* Palpite */}
                       <span className={`shrink-0 text-right transition-all ${!showPredictions ? "blur-sm select-none pointer-events-none" : ""}`}>
                         <span className="font-mono text-sm font-bold">{e.home_score} × {e.away_score}</span>
-                        {isKnockout && winner && (
-                          <span className="block text-[10px] text-muted-foreground leading-tight">passa: {winner}</span>
-                        )}
                       </span>
 
                       {/* Pontos */}
