@@ -7,11 +7,16 @@ export async function GET() {
   if (error) return error
 
   const supabase = createAdminClient()
-  const { data, error: dbError } = await supabase
-    .from("teams")
-    .select("id, fifa_code, name, flag_url, group_letter")
-    .order("name", { ascending: true })
 
-  if (dbError) return NextResponse.json({ error: dbError.message }, { status: 500 })
-  return NextResponse.json({ teams: data })
+  const [teamsRes, configRes] = await Promise.all([
+    supabase.from("teams").select("id, fifa_code, name, flag_url, group_letter").order("group_letter").order("name"),
+    supabase.from("pool_config").select("value").eq("key", "r16_bracket").single(),
+  ])
+
+  if (teamsRes.error) return NextResponse.json({ error: teamsRes.error.message }, { status: 500 })
+
+  return NextResponse.json({
+    teams: teamsRes.data,
+    r32Seeding: configRes.data?.value ?? [],
+  })
 }
