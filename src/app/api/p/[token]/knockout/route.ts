@@ -12,8 +12,9 @@ export async function GET(
   if (error) return error
 
   const supabase = createAdminClient()
+  const allCutoffKeys = Object.values(KO_CUTOFF_KEY)
 
-  const [{ data: predictions }, { data: matches }] = await Promise.all([
+  const [{ data: predictions }, { data: matches }, { data: cutoffConfig }, { data: overrides }] = await Promise.all([
     supabase
       .from("knockout_predictions")
       .select("match_id, home_team_id, away_team_id, home_score, away_score, winner_team_id, is_locked")
@@ -23,7 +24,33 @@ export async function GET(
       .select("id, stage, match_number, scheduled_at, status, home_team_id, away_team_id, home_score, away_score, winner_team_id, home_team:teams!matches_home_team_id_fkey(id, fifa_code, name, flag_url), away_team:teams!matches_away_team_id_fkey(id, fifa_code, name, flag_url)")
       .neq("stage", "GROUP")
       .order("scheduled_at", { ascending: true }),
+    supabase.from("pool_config").select("key, value").in("key", allCutoffKeys),
+    supabase.from("match_deadline_overrides").select("match_id, close_at"),
   ])
+
+  // Calcula is_locked por jogo (15 min antes de cada partida, configurável)
+  const cfgMap = Object.fromEntries((cutoffConfig ?? []).map(r => [r.key, r.value]))
+  const cutoffForStage = (stage: string) => Number(cfgMap[KO_CUTOFF_KEY[stage]] ?? 15)
+  const overrideMap = new Map((overrides ?? []).map(o => [o.match_id, o.close_at]))
+
+  const predMap = new Map((predictions ?? []).map(p => [p.match_id, p]))
+
+  // Calcula lock para todos os jogos (mesmo sem palpite ainda)
+  const matchLockMap = new Map<number, boolean>()
+  const predictionsWithLock = []
+  for (const m of matches ?? []) {
+    const customClose = overrideMap.get(m.id)
+    const locked = m.status === "LIVE" || m.status === "FINISHED" || (
+      customClose
+        ? Date.now() >= new Date(customClose).getTime()
+        : isPredictionLocked(m.scheduled_at, cutoffForStage(m.stage))
+    )
+    matchLockMap.set(m.id, locked)
+    const pred = predMap.get(m.id)
+    if (pred) predictionsWithLock.push({ ...pred, is_locked: locked })
+  }
+
+  const lockedMatchIds = [...matchLockMap.entries()].filter(([, v]) => v).map(([k]) => k)
 
   // Get participant's simulated group classification
   const { data: classifications } = await supabase
@@ -34,9 +61,10 @@ export async function GET(
     .order("position")
 
   return NextResponse.json({
-    predictions: predictions ?? [],
+    predictions: predictionsWithLock,
     matches: matches ?? [],
     classifications: classifications ?? [],
+    lockedMatchIds,
   })
 }
 

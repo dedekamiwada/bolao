@@ -22,6 +22,7 @@ interface Team {
 
 interface Match {
   id: number
+  stage: string
   match_number: number
   group_letter: string
   home_team_id: number
