@@ -24,7 +24,7 @@ export async function PUT(req: NextRequest) {
   const { error } = await requireAdmin()
   if (error) return error
 
-  const { id, home_score, away_score, status, winner_team_id } = await req.json()
+  const { id, home_score, away_score, status, winner_team_id, home_team_id, away_team_id } = await req.json()
   if (!id) return NextResponse.json({ error: "ID do jogo obrigatório" }, { status: 400 })
 
   const supabase = createAdminClient()
@@ -35,6 +35,8 @@ export async function PUT(req: NextRequest) {
   if (away_score !== undefined) update.away_score = away_score
   if (status !== undefined) update.status = status
   if (winner_team_id !== undefined) update.winner_team_id = winner_team_id
+  if (home_team_id !== undefined) update.home_team_id = home_team_id
+  if (away_team_id !== undefined) update.away_team_id = away_team_id
 
   if (status === "FINISHED" && home_score !== undefined) {
     update.result_confirmed_at = new Date().toISOString()

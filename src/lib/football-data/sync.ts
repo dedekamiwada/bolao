@@ -2,6 +2,7 @@ import { createAdminClient } from "@/lib/supabase/admin"
 import { fetchLiveAndFinishedMatches, fetchAllMatches } from "./client"
 import { FD_STATUS_MAP, buildTlaToId } from "./types"
 import { recalculateMatchScores, updateRankingSnapshots } from "@/lib/scoring/calculate"
+import { KNOCKOUT_PROGRESSION, THIRD_PLACE_MATCH, THIRD_PLACE_SOURCES } from "@/lib/scoring/bracketPreview"
 
 export async function syncMatches(fullSync = false) {
   const supabase = createAdminClient()
@@ -138,6 +139,68 @@ export async function syncMatches(fullSync = false) {
   }
   if (newlyFinished.length > 0) {
     await updateRankingSnapshots(supabase)
+  }
+
+  // ── Propagate bracket winners to next knockout matches ───────────────────
+  // Busca todos os jogos do mata-mata finalizados com winner_team_id definido
+  // e preenche home_team_id / away_team_id dos jogos seguintes no bracket.
+  // Só atualiza se o campo ainda estiver NULL (nunca sobrescreve dado já definido).
+  const { data: koMatches } = await supabase
+    .from("matches")
+    .select("id, match_number, stage, status, winner_team_id, home_team_id, away_team_id")
+    .neq("stage", "GROUP")
+
+  if (koMatches && koMatches.length > 0) {
+    type KoMatch = { id: number; match_number: number; stage: string; status: string; winner_team_id: number | null; home_team_id: number | null; away_team_id: number | null }
+    const byNumber = new Map<number, KoMatch>()
+    for (const m of koMatches as KoMatch[]) byNumber.set(m.match_number, m)
+
+    for (const [nextNum, sources] of Object.entries(KNOCKOUT_PROGRESSION)) {
+      const nextMatch = byNumber.get(Number(nextNum))
+      if (!nextMatch) continue
+
+      const homeSource = byNumber.get(sources.home)
+      const awaySource = byNumber.get(sources.away)
+
+      const homeWinner = homeSource?.status === "FINISHED" ? homeSource.winner_team_id : null
+      const awayWinner = awaySource?.status === "FINISHED" ? awaySource.winner_team_id : null
+
+      const updateNext: Record<string, unknown> = {}
+      if (homeWinner && !nextMatch.home_team_id) updateNext.home_team_id = homeWinner
+      if (awayWinner && !nextMatch.away_team_id) updateNext.away_team_id = awayWinner
+
+      if (Object.keys(updateNext).length > 0) {
+        await supabase.from("matches").update(updateNext).eq("id", nextMatch.id)
+      }
+    }
+
+    // 3º lugar: recebe os PERDEDORES das semifinais
+    const thirdMatch = byNumber.get(THIRD_PLACE_MATCH)
+    if (thirdMatch) {
+      const homeSemi = byNumber.get(THIRD_PLACE_SOURCES.home)
+      const awaySemi = byNumber.get(THIRD_PLACE_SOURCES.away)
+
+      const updateThird: Record<string, unknown> = {}
+
+      if (homeSemi?.status === "FINISHED" && homeSemi.winner_team_id && !thirdMatch.home_team_id) {
+        // Perdedor = quem não é o winner. Usa home_team_id ou away_team_id da semi.
+        const loser = homeSemi.winner_team_id === homeSemi.home_team_id
+          ? homeSemi.away_team_id
+          : homeSemi.home_team_id
+        if (loser) updateThird.home_team_id = loser
+      }
+
+      if (awaySemi?.status === "FINISHED" && awaySemi.winner_team_id && !thirdMatch.away_team_id) {
+        const loser = awaySemi.winner_team_id === awaySemi.home_team_id
+          ? awaySemi.away_team_id
+          : awaySemi.home_team_id
+        if (loser) updateThird.away_team_id = loser
+      }
+
+      if (Object.keys(updateThird).length > 0) {
+        await supabase.from("matches").update(updateThird).eq("id", thirdMatch.id)
+      }
+    }
   }
 
   // ── Update last_sync timestamp (best-effort) ─────────────────────────────

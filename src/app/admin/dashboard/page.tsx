@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Users, RefreshCw, Copy, Check, LogOut, Loader2, Plus, Trash2, Calculator, RotateCcw, AlertCircle, CheckCircle2, CalendarClock, Timer, ShieldCheck } from "lucide-react"
 import { MatchResultsEditor } from "@/components/admin/MatchResultsEditor"
+import { KnockoutTeamAssigner } from "@/components/admin/KnockoutTeamAssigner"
 
 interface Participant { id: string; name: string; created_at: string; is_active: boolean }
 type DateDiff = { match_id: number; home_team: string; away_team: string; db_date: string; api_date: string; diff_minutes: number; status: string }
@@ -338,6 +339,8 @@ export default function AdminDashboard() {
             </Card>
 
             <MatchResultsEditor />
+
+            <KnockoutTeamAssigner />
 
             <Card>
               <CardHeader className="pb-3">
