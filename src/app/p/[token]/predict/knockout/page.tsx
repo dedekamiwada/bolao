@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo, useCallback } from "react"
 import { useParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
-import { ArrowLeft, Loader2, Trophy, Lock, ChevronRight, Info, Eye } from "lucide-react"
+import { ArrowLeft, Loader2, Trophy, Lock, ChevronRight, Info, Eye, CalendarDays } from "lucide-react"
 import Link from "next/link"
 import Image from "next/image"
 import { STAGE_LABELS, KNOCKOUT_POINTS } from "@/types/domain"
@@ -257,11 +257,20 @@ function MatchCard({
           </div>
 
           {/* Placar */}
-          <div className="shrink-0 w-14 text-center">
+          <div className="shrink-0 w-16 text-center flex flex-col items-center gap-0.5">
             {isFinished ? (
-              <span className="text-base font-bold">{match.home_score} × {match.away_score}</span>
+              <>
+                <span className="text-base font-bold text-green-600 dark:text-green-400">
+                  {match.home_score} × {match.away_score}
+                </span>
+                {hasPred && (
+                  <span className="text-[11px] text-muted-foreground leading-none">
+                    {prediction!.home_score} × {prediction!.away_score}
+                  </span>
+                )}
+              </>
             ) : hasPred ? (
-              <span className="text-sm font-semibold text-green-700 dark:text-green-400">
+              <span className="text-sm font-semibold text-green-600 dark:text-green-400">
                 {prediction!.home_score} × {prediction!.away_score}
               </span>
             ) : (
@@ -331,6 +340,7 @@ export default function KnockoutPredictPage() {
   const [modalMatch, setModalMatch] = useState<KnockoutMatch | null>(null)
   const [viewMatch, setViewMatch] = useState<KnockoutMatch | null>(null)
   const [pendingPreds, setPendingPreds] = useState<Map<number, { home: number; away: number }>>(new Map())
+  const [sortByDate, setSortByDate] = useState(false)
 
   useEffect(() => {
     fetch(`/api/p/${token}/knockout`)
@@ -438,6 +448,28 @@ export default function KnockoutPredictPage() {
     } else {
       setSaveMsg("Erro ao salvar.")
     }
+  }
+
+  // ── Renderização por data (flat, sem agrupamento por chave) ──────────────
+  function renderSortedByDate(stage: string) {
+    const sorted = matches
+      .filter(m => m.stage === stage)
+      .sort((a, b) => new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime())
+    return (
+      <div className="space-y-3">
+        {sorted.map(m => (
+          <MatchCard
+            key={m.id}
+            match={m}
+            prediction={predictions.get(m.id) ?? null}
+            isLocked={lockedMatchIds.has(m.id)}
+            sourceLine={sourceLineFor(m.match_number)}
+            onTap={() => setModalMatch(m)}
+            onViewPredictions={() => setViewMatch(m)}
+          />
+        ))}
+      </div>
+    )
   }
 
   // ── Renderização por fase ──────────────────────────────────────────────────
@@ -644,7 +676,8 @@ export default function KnockoutPredictPage() {
 
       {/* Tabs das fases — sticky abaixo do header */}
       <div className="bg-background border-b sticky top-12 z-10">
-        <div className="flex overflow-x-auto">
+        <div className="flex items-center">
+        <div className="flex overflow-x-auto flex-1">
           {stagesPresent.map((stage, i) => {
             const hasPending = matches
               .filter(m => m.stage === stage)
@@ -668,6 +701,18 @@ export default function KnockoutPredictPage() {
             )
           })}
         </div>
+        <button
+          onClick={() => setSortByDate(v => !v)}
+          className={[
+            "px-3 flex items-center gap-1 shrink-0 border-l py-3 text-xs transition-colors",
+            sortByDate ? "text-green-600 dark:text-green-400" : "text-muted-foreground hover:text-foreground",
+          ].join(" ")}
+          title={sortByDate ? "Ver por chaveamento" : "Ver por data"}
+        >
+          <CalendarDays className="w-4 h-4" />
+          <span className="hidden sm:inline text-[11px]">{sortByDate ? "Chave" : "Data"}</span>
+        </button>
+        </div>
       </div>
 
       {/* Conteúdo */}
@@ -686,7 +731,7 @@ export default function KnockoutPredictPage() {
           </div>
         )}
 
-        {renderStage(activeStage)}
+        {sortByDate ? renderSortedByDate(activeStage) : renderStage(activeStage)}
       </div>
 
       {/* Botão salvar — sticky no fundo */}
