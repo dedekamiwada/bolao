@@ -68,6 +68,13 @@ async function buildDiff(): Promise<{ diffs: DateDiff[]; unmatched: number }> {
       continue
     }
 
+    // Não corrigir datas de jogos do mata-mata sem os dois times definidos —
+    // external_id pode ter sido gravado com times errados em sync anterior.
+    if (!dbMatch.home_team || !dbMatch.away_team) {
+      unmatched++
+      continue
+    }
+
     const apiTime = new Date(fdMatch.utcDate).getTime()
     const dbTime = new Date(dbMatch.scheduled_at).getTime()
     const diffMs = Math.abs(apiTime - dbTime)
