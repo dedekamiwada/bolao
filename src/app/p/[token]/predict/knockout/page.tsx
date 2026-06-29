@@ -192,7 +192,7 @@ function MatchCard({
   onTap: () => void
 }) {
   const teamsKnown = !!(match.home_team && match.away_team)
-  const hasPred = prediction?.home_score !== null && prediction?.away_score !== null
+  const hasPred = prediction !== null && prediction.home_score !== null && prediction.away_score !== null
   const canPredict = !isLocked && teamsKnown
   const isFinished = match.status === "FINISHED"
 
