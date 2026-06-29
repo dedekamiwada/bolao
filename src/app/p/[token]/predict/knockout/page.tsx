@@ -3,12 +3,13 @@
 import { useState, useEffect, useMemo, useCallback } from "react"
 import { useParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
-import { ArrowLeft, Loader2, Trophy, Lock, ChevronRight, Info } from "lucide-react"
+import { ArrowLeft, Loader2, Trophy, Lock, ChevronRight, Info, Eye } from "lucide-react"
 import Link from "next/link"
 import Image from "next/image"
 import { STAGE_LABELS, KNOCKOUT_POINTS } from "@/types/domain"
 import type { Stage } from "@/types/domain"
 import { KNOCKOUT_PROGRESSION, THIRD_PLACE_MATCH, THIRD_PLACE_SOURCES } from "@/lib/scoring/bracketPreview"
+import { MatchPredictionsModal } from "@/components/predict/MatchPredictionsModal"
 
 interface Team {
   id: number
@@ -184,23 +185,26 @@ function MatchCard({
   isLocked,
   sourceLine,
   onTap,
+  onViewPredictions,
 }: {
   match: KnockoutMatch
   prediction: KnockoutPrediction | null
   isLocked: boolean
   sourceLine?: string
   onTap: () => void
+  onViewPredictions?: () => void
 }) {
   const teamsKnown = !!(match.home_team && match.away_team)
   const hasPred = prediction !== null && prediction.home_score !== null && prediction.away_score !== null
   const canPredict = !isLocked && teamsKnown
   const isFinished = match.status === "FINISHED"
+  const canViewPredictions = teamsKnown && (isLocked || isFinished)
 
   return (
     <div
       className={[
         "rounded-xl border bg-card transition-all",
-        canPredict ? "cursor-pointer active:scale-[0.98] hover:border-green-400" : "opacity-80",
+        canPredict ? "cursor-pointer active:scale-[0.98] hover:border-green-400" : "",
         hasPred && !isLocked && !isFinished ? "border-green-500/60" : "",
       ].join(" ")}
       onClick={canPredict ? onTap : undefined}
@@ -226,6 +230,15 @@ function MatchCard({
               </span>
             )}
             {isLocked && !isFinished && <Lock className="w-3 h-3 text-muted-foreground" />}
+            {canViewPredictions && onViewPredictions && (
+              <button
+                onClick={e => { e.stopPropagation(); onViewPredictions() }}
+                className="text-muted-foreground hover:text-foreground transition-colors p-0.5"
+                title="Ver palpites dos participantes"
+              >
+                <Eye className="w-3.5 h-3.5" />
+              </button>
+            )}
             {canPredict && <ChevronRight className="w-3.5 h-3.5 text-muted-foreground" />}
           </div>
         </div>
@@ -316,6 +329,7 @@ export default function KnockoutPredictPage() {
   const [saveMsg, setSaveMsg] = useState("")
   const [activeStageIdx, setActiveStageIdx] = useState(0)
   const [modalMatch, setModalMatch] = useState<KnockoutMatch | null>(null)
+  const [viewMatch, setViewMatch] = useState<KnockoutMatch | null>(null)
   const [pendingPreds, setPendingPreds] = useState<Map<number, { home: number; away: number }>>(new Map())
 
   useEffect(() => {
@@ -456,6 +470,7 @@ export default function KnockoutPredictPage() {
                     prediction={predictions.get(m!.id) ?? null}
                     isLocked={lockedMatchIds.has(m!.id)}
                     onTap={() => setModalMatch(m!)}
+                    onViewPredictions={() => setViewMatch(m!)}
                   />
                 ))}
               </div>
@@ -491,6 +506,7 @@ export default function KnockoutPredictPage() {
                     isLocked={lockedMatchIds.has(m!.id)}
                     sourceLine={sourceLineFor(m!.match_number)}
                     onTap={() => setModalMatch(m!)}
+                    onViewPredictions={() => setViewMatch(m!)}
                   />
                 ))}
               </div>
@@ -526,6 +542,7 @@ export default function KnockoutPredictPage() {
                     isLocked={lockedMatchIds.has(m!.id)}
                     sourceLine={sourceLineFor(m!.match_number)}
                     onTap={() => setModalMatch(m!)}
+                    onViewPredictions={() => setViewMatch(m!)}
                   />
                 ))}
               </div>
@@ -552,6 +569,7 @@ export default function KnockoutPredictPage() {
                   isLocked={lockedMatchIds.has(m.id)}
                   sourceLine={sourceLineFor(m.match_number)}
                   onTap={() => setModalMatch(m)}
+                  onViewPredictions={() => setViewMatch(m)}
                 />
               ))}
             </div>
@@ -577,6 +595,7 @@ export default function KnockoutPredictPage() {
             isLocked={lockedMatchIds.has(m.id)}
             sourceLine={sourceLineFor(m.match_number)}
             onTap={() => setModalMatch(m)}
+            onViewPredictions={() => setViewMatch(m)}
           />
         ))}
       </div>
@@ -705,6 +724,25 @@ export default function KnockoutPredictPage() {
           prediction={predictions.get(modalMatch.id) ?? null}
           onSave={handlePredSave}
           onClose={() => setModalMatch(null)}
+        />
+      )}
+
+      {/* Modal de palpites dos participantes */}
+      {viewMatch && (
+        <MatchPredictionsModal
+          match={{
+            id: viewMatch.id,
+            stage: viewMatch.stage,
+            status: viewMatch.status,
+            home_score: viewMatch.home_score,
+            away_score: viewMatch.away_score,
+            home_team: viewMatch.home_team,
+            away_team: viewMatch.away_team,
+            scheduled_at: viewMatch.scheduled_at,
+          }}
+          isLocked={viewMatch.status !== "SCHEDULED"}
+          isFinished={viewMatch.status === "FINISHED"}
+          onClose={() => setViewMatch(null)}
         />
       )}
     </main>
