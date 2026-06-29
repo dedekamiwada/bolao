@@ -7,14 +7,15 @@
 
 export const KNOCKOUT_PROGRESSION: Record<number, { home: number; away: number }> = {
   // R16 — Oitavas (89–96)
-  89: { home: 73, away: 74 },
-  90: { home: 75, away: 76 },
-  91: { home: 77, away: 78 },
-  92: { home: 79, away: 80 },
-  93: { home: 81, away: 82 },
-  94: { home: 83, away: 84 },
-  95: { home: 85, away: 86 },
-  96: { home: 87, away: 88 },
+  // Bracket oficial FIFA 2026: pares por lado do chaveamento
+  89: { home: 75, away: 78 },  // W[Alemanha/Paraguai] vs W[França/Suécia]
+  90: { home: 73, away: 76 },  // W[Africa do Sul/Canadá] vs W[Holanda/Marrocos]
+  91: { home: 74, away: 77 },  // W[Brasil/Japão] vs W[Costa Marfim/Noruega]
+  92: { home: 79, away: 80 },  // W[México/Equador] vs W[Inglaterra/Congo DR]
+  93: { home: 81, away: 82 },  // W[Bélgica/Senegal] vs W[EUA/Bósnia]
+  94: { home: 83, away: 84 },  // W[Espanha/Áustria] vs W[Portugal/Croácia]
+  95: { home: 87, away: 86 },  // W[Argentina/Cabo Verde] vs W[Austrália/Egito]
+  96: { home: 85, away: 88 },  // W[Suíça/Argélia] vs W[Colômbia/Gana]
   // QF — Quartas (97–100)
   97: { home: 89, away: 90 },
   98: { home: 91, away: 92 },
