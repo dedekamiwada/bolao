@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo, useCallback } from "react"
 import { useParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
-import { ArrowLeft, Loader2, Trophy, Lock, ChevronRight, Info, Eye, CalendarDays } from "lucide-react"
+import { ArrowLeft, Loader2, Trophy, Lock, ChevronRight, Info, Eye } from "lucide-react"
 import Link from "next/link"
 import Image from "next/image"
 import { STAGE_LABELS, KNOCKOUT_POINTS } from "@/types/domain"
@@ -205,7 +205,7 @@ function MatchCard({
       className={[
         "rounded-xl border bg-card transition-all",
         canPredict ? "cursor-pointer active:scale-[0.98] hover:border-green-400" : "",
-        hasPred && !isLocked && !isFinished ? "border-green-500/60" : "",
+        hasPred && !isLocked && !isFinished ? "border-blue-400/60" : "",
       ].join(" ")}
       onClick={canPredict ? onTap : undefined}
     >
@@ -225,7 +225,7 @@ function MatchCard({
               <span className="text-[9px] bg-muted text-muted-foreground rounded px-1.5 py-0.5">Encerrado</span>
             )}
             {hasPred && !isFinished && (
-              <span className="text-[9px] bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-300 rounded px-1.5 py-0.5 font-medium">
+              <span className="text-[9px] bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300 rounded px-1.5 py-0.5 font-medium">
                 ✓ Palpitado
               </span>
             )}
@@ -270,7 +270,7 @@ function MatchCard({
                 )}
               </>
             ) : hasPred ? (
-              <span className="text-sm font-semibold text-green-600 dark:text-green-400">
+              <span className="text-sm font-semibold text-blue-600 dark:text-blue-400">
                 {prediction!.home_score} × {prediction!.away_score}
               </span>
             ) : (
@@ -666,7 +666,7 @@ export default function KnockoutPredictPage() {
           <Link href={`/p/${token}`}><ArrowLeft className="w-5 h-5 text-green-300" /></Link>
           <h1 className="font-bold text-base">Mata-Mata · Palpites</h1>
         </div>
-        <Link href={`/p/${token}`}>
+        <Link href="/">
           <Button size="sm" variant="ghost" className="text-green-300 hover:text-white hover:bg-white/10 gap-1">
             <Trophy className="w-4 h-4" />
             <span className="text-xs">Ranking</span>
@@ -676,8 +676,7 @@ export default function KnockoutPredictPage() {
 
       {/* Tabs das fases — sticky abaixo do header */}
       <div className="bg-background border-b sticky top-12 z-10">
-        <div className="flex items-center">
-        <div className="flex overflow-x-auto flex-1">
+        <div className="flex overflow-x-auto">
           {stagesPresent.map((stage, i) => {
             const hasPending = matches
               .filter(m => m.stage === stage)
@@ -701,35 +700,41 @@ export default function KnockoutPredictPage() {
             )
           })}
         </div>
-        <button
-          onClick={() => setSortByDate(v => !v)}
-          className={[
-            "px-3 flex items-center gap-1 shrink-0 border-l py-3 text-xs transition-colors",
-            sortByDate ? "text-green-600 dark:text-green-400" : "text-muted-foreground hover:text-foreground",
-          ].join(" ")}
-          title={sortByDate ? "Ver por chaveamento" : "Ver por data"}
-        >
-          <CalendarDays className="w-4 h-4" />
-          <span className="hidden sm:inline text-[11px]">{sortByDate ? "Chave" : "Data"}</span>
-        </button>
-        </div>
       </div>
 
       {/* Conteúdo */}
       <div className="max-w-2xl mx-auto px-3 py-4">
 
-        {/* Pontuação da fase */}
-        {activeStage && activeStage in KNOCKOUT_POINTS && (
-          <div className="flex items-center gap-2 mb-4 text-xs text-muted-foreground bg-muted/40 rounded-lg px-3 py-2">
-            <span className="font-medium">{STAGE_LABELS[activeStage as Stage]}:</span>
-            <span className="text-green-700 dark:text-green-400 font-semibold">
-              {KNOCKOUT_POINTS[activeStage as Stage].exact} pts
-            </span>
-            <span>placar exato ·</span>
-            <span className="font-semibold">{KNOCKOUT_POINTS[activeStage as Stage].result} pts</span>
-            <span>resultado</span>
-          </div>
-        )}
+        {/* Ordenação + Pontuação da fase */}
+        <div className="flex items-center gap-2 mb-4">
+          <button
+            onClick={() => setSortByDate(false)}
+            className={[
+              "flex-1 py-1.5 rounded-lg text-xs font-medium border transition-colors",
+              !sortByDate ? "bg-green-700 text-white border-green-700" : "text-muted-foreground border-border hover:text-foreground",
+            ].join(" ")}
+          >
+            Por chaveamento
+          </button>
+          <button
+            onClick={() => setSortByDate(true)}
+            className={[
+              "flex-1 py-1.5 rounded-lg text-xs font-medium border transition-colors",
+              sortByDate ? "bg-green-700 text-white border-green-700" : "text-muted-foreground border-border hover:text-foreground",
+            ].join(" ")}
+          >
+            Por data
+          </button>
+          {activeStage && activeStage in KNOCKOUT_POINTS && (
+            <div className="text-xs text-muted-foreground bg-muted/40 rounded-lg px-2 py-1.5 whitespace-nowrap shrink-0">
+              <span className="text-green-700 dark:text-green-400 font-semibold">
+                {KNOCKOUT_POINTS[activeStage as Stage].exact}
+              </span>
+              <span> / </span>
+              <span className="font-semibold">{KNOCKOUT_POINTS[activeStage as Stage].result} pts</span>
+            </div>
+          )}
+        </div>
 
         {sortByDate ? renderSortedByDate(activeStage) : renderStage(activeStage)}
       </div>

@@ -87,9 +87,9 @@ export async function syncMatches(fullSync = false) {
     const wasNotFinished = existing.status !== "FINISHED"
     const isNowFinished = status === "FINISHED" && homeScore !== null && awayScore !== null
 
-    // Resultado confirmado manualmente pelo admin: só o FINISHED oficial da API
-    // pode sobrescrever — nunca rebaixa para LIVE/SCHEDULED nem apaga o placar.
-    if (existing.result_confirmed_at && existing.status === "FINISHED" && !isNowFinished) continue
+    // Resultado confirmado manualmente pelo admin: a API nunca sobrescreve.
+    // O admin usa a tela de Correção Manual para corrigir se necessário.
+    if (existing.result_confirmed_at && existing.status === "FINISHED") continue
 
     const update: Record<string, unknown> = { status }
 
